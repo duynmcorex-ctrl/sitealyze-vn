@@ -1,0 +1,69 @@
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
+import { Suspense, useMemo } from 'react';
+import { TerrainMesh } from './TerrainMesh';
+import { ContourLines } from './ContourLines';
+import { FlowArrows } from './FlowArrows';
+import { FeatureMarkers } from './FeatureMarkers';
+import { SunLight } from './SunLight';
+import { WindParticles } from './WindParticles';
+import { ViewpointMarker } from './ViewpointMarker';
+import { OverlayLayerRenderer } from './OverlayLayerRenderer';
+import { AutoFit } from './AutoFit';
+import { CameraPreset } from './CameraPreset';
+import { useSiteStore } from '../../store/useSiteStore';
+
+export function Canvas3D() {
+  const terrain = useSiteStore((s) => s.terrain);
+  const mode = useSiteStore((s) => s.mode);
+  const northRotation = useSiteStore((s) => s.env.northRotation);
+  const showContourOverlay = useSiteStore((s) => s.showContourOverlay);
+  const showGrid = useSiteStore((s) => s.showGrid);
+
+  const gridConfig = useMemo(() => {
+    if (!terrain) return { size: 2000, divisions: 40, y: 0 };
+    const hm = terrain.heightmap;
+    const size = Math.max(hm.width * hm.cellSize, hm.height * hm.cellSize) * 1.6;
+    const cell = Math.max(5, Math.round(size / 50));
+    return { size, divisions: Math.round(size / cell), y: hm.minZ - 0.5 };
+  }, [terrain]);
+
+  return (
+    <Canvas
+      camera={{ position: [200, 200, 200], fov: 45, near: 0.1, far: 10000 }}
+      shadows={mode === 'sun'}
+      gl={{ antialias: true, preserveDrawingBuffer: true }}
+      style={{ background: 'linear-gradient(180deg, #060912 0%, #0a0e1a 100%)' }}
+    >
+      <ambientLight intensity={mode === 'sun' ? 0.25 : 0.6} />
+      {mode !== 'sun' && <directionalLight position={[100, 200, 100]} intensity={0.8} />}
+      <Suspense fallback={null}>
+        {terrain && (
+          <group rotation={[0, (-northRotation * Math.PI) / 180, 0]}>
+            <TerrainMesh />
+            {/* Contour overlay: luôn hiển thị khi bật toggle, hoặc khi mode=contour */}
+            {(mode === 'contour' || showContourOverlay) && <ContourLines />}
+            {mode === 'hydrology' && <FlowArrows />}
+            {mode === 'features' && <FeatureMarkers />}
+            {mode === 'sun' && <SunLight />}
+            {mode === 'wind' && <WindParticles />}
+            {mode === 'viewshed' && <ViewpointMarker />}
+            <OverlayLayerRenderer />
+            {showGrid && (
+              <gridHelper
+                args={[gridConfig.size, gridConfig.divisions, '#1f2937', '#1f2937']}
+                position={[0, gridConfig.y, 0]}
+              />
+            )}
+          </group>
+        )}
+        {!terrain && showGrid && (
+          <gridHelper args={[200, 20, '#1f2937', '#1f2937']} position={[0, -0.01, 0]} />
+        )}
+      </Suspense>
+      <AutoFit />
+      <CameraPreset />
+      <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
+    </Canvas>
+  );
+}

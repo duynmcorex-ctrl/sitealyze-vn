@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+@layer components {
+  .panel {
+    @apply bg-bg-panel/95 backdrop-blur border border-white/5;
+  }
+  .btn-mode {
+    @apply px-3 py-2 rounded-md text-xs font-semibold uppercase tracking-wider
+           bg-bg-card hover:bg-white/10 text-slate-300 transition-colors
+           border border-white/5;
+  }
+  .btn-mode.active {
+    @apply bg-accent-teal text-bg-base hover:bg-accent-teal border-accent-teal;
+  }
+  .slider {
+    @apply w-full h-1.5 rounded-full appearance-none bg-white/10 outline-none cursor-pointer;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    background: #22d3c5;
+    cursor: pointer;
+    border: 2px solid #0a0e1a;
+  }
+  .label-section {
+    @apply text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 mb-2;
+  }
+}
