@@ -101,4 +101,9 @@ export interface EnvParams {
   contourColorMode: 'elevation' | 'single';
   contourSingleColor: string;   // CSS hex, e.g. '#ffffff'
   contourOpacity: number;       // 0–1
+  /**
+   * true (mặc định) → render đường đồng mức nguyên bản từ DXF gốc
+   * false → tự tính lại từ heightmap với contourInterval (cho phép đổi interval)
+   */
+  useOriginalContours: boolean;
 }

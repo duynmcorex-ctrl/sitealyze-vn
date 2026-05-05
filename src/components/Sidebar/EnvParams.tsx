@@ -49,7 +49,44 @@ export function EnvParams() {
         </div>
       )}
 
-      {showIntervalSlider && (
+      {/* ── Nguồn đường đồng mức: CAD gốc vs tự tính ── */}
+      {showContourStyle && terrain && (
+        <div className="space-y-1.5 pt-1 border-t border-white/5">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500">
+            Nguồn đường đồng mức
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setEnv({ useOriginalContours: true })}
+              className={`flex-1 py-1.5 rounded text-[11px] font-semibold transition border
+                ${env.useOriginalContours
+                  ? 'bg-accent-teal/20 border-accent-teal text-accent-teal'
+                  : 'bg-bg-card border-white/10 text-slate-400 hover:border-white/20'}`}
+              title="Dùng đường đồng mức nguyên bản từ file CAD (trung thực)"
+            >
+              Từ CAD gốc
+            </button>
+            <button
+              onClick={() => setEnv({ useOriginalContours: false })}
+              className={`flex-1 py-1.5 rounded text-[11px] font-semibold transition border
+                ${!env.useOriginalContours
+                  ? 'bg-accent-teal/20 border-accent-teal text-accent-teal'
+                  : 'bg-bg-card border-white/10 text-slate-400 hover:border-white/20'}`}
+              title="Tự tính từ địa hình theo khoảng đồng mức tuỳ chỉnh"
+            >
+              Tự tính
+            </button>
+          </div>
+          {env.useOriginalContours && (
+            <div className="text-[10px] text-slate-500 leading-tight">
+              {terrain.contours.length} đường đồng mức nguyên bản từ DXF
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Khoảng đồng mức (chỉ khi tự tính) ── */}
+      {showIntervalSlider && !env.useOriginalContours && (
         <Slider label="Khoảng đồng mức" value={env.contourInterval} min={1} max={20} step={1} suffix="m"
           onChange={(v) => setEnv({ contourInterval: v })} />
       )}

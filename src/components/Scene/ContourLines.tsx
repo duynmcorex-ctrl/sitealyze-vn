@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import { useSiteStore } from '../../store/useSiteStore';
 import { ELEV_PALETTE_HEX, elevPaletteIndex } from '../../lib/analysis/elevationPalette';
+import { originalContoursToSegments } from '../../lib/analysis/contours';
 
 export function ContourLines() {
   const terrain  = useSiteStore((s) => s.terrain);
@@ -13,12 +14,21 @@ export function ContourLines() {
   const colorMode   = env.contourColorMode;
   const singleColor = env.contourSingleColor;
   const opacity     = env.contourOpacity;
+  const useOriginal = env.useOriginalContours;
 
   // Nhãn chỉ hiển thị khi đang ở chế độ "đồng mức" chính (không phải overlay)
   const showLabels = mode === 'contour';
 
   const { geometry, labelPoints } = useMemo(() => {
-    if (!terrain || !analysis.contours) return { geometry: null, labelPoints: [] };
+    if (!terrain) return { geometry: null, labelPoints: [] };
+
+    // Chọn nguồn segments: nguyên bản DXF (trung thực) HOẶC tính lại từ heightmap
+    const segments =
+      useOriginal && terrain.contours.length > 0
+        ? originalContoursToSegments(terrain.contours, terrain.bounds)
+        : analysis.contours;
+
+    if (!segments || segments.length === 0) return { geometry: null, labelPoints: [] };
 
     const hm       = terrain.heightmap;
     const positions: number[] = [];
@@ -27,7 +37,7 @@ export function ContourLines() {
 
     const labelMap = new Map<number, { x: number; y: number; z: number }>();
 
-    for (const seg of analysis.contours) {
+    for (const seg of segments) {
       // Chọn màu theo chế độ
       let r: number, g: number, b: number;
       if (colorMode === 'single') {
@@ -68,7 +78,7 @@ export function ContourLines() {
 
     return { geometry: g, labelPoints };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrain, analysis.contours, colorMode, singleColor]);
+  }, [terrain, analysis.contours, colorMode, singleColor, useOriginal]);
 
   if (!geometry) return null;
 

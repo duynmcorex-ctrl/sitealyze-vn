@@ -84,6 +84,7 @@ const DEFAULT_ENV: EnvParams = {
   contourColorMode: 'elevation',
   contourSingleColor: '#ffffff',
   contourOpacity: 0.9,
+  useOriginalContours: true, // mặc định: trung thực với CAD gốc
 };
 
 export const useSiteStore = create<State>((set, get) => ({
