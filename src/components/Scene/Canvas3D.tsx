@@ -2,6 +2,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Suspense, useMemo } from 'react';
 import { TerrainMesh } from './TerrainMesh';
+import { TerrainMeshBg } from './TerrainMeshBg';
 import { ContourLines } from './ContourLines';
 import { FlowArrows } from './FlowArrows';
 import { FeatureMarkers } from './FeatureMarkers';
@@ -14,11 +15,33 @@ import { CameraPreset } from './CameraPreset';
 import { useSiteStore } from '../../store/useSiteStore';
 
 export function Canvas3D() {
-  const terrain = useSiteStore((s) => s.terrain);
-  const mode = useSiteStore((s) => s.mode);
-  const northRotation = useSiteStore((s) => s.env.northRotation);
+  const terrain         = useSiteStore((s) => s.terrain);
+  const mode            = useSiteStore((s) => s.mode);
+  const northRotation   = useSiteStore((s) => s.env.northRotation);
   const showContourOverlay = useSiteStore((s) => s.showContourOverlay);
-  const showGrid = useSiteStore((s) => s.showGrid);
+  const showGrid        = useSiteStore((s) => s.showGrid);
+  const projects        = useSiteStore((s) => s.projects);
+  const activeProjectId = useSiteStore((s) => s.activeProjectId);
+
+  // Background projects: visible, not active, có terrain
+  const bgProjects = useMemo(() => {
+    const active = projects.find(p => p.id === activeProjectId);
+    return projects
+      .filter(p => p.id !== activeProjectId && p.visible && p.terrain)
+      .map(p => {
+        // Tính offset VN2000: dE (easting) → Three.js +X, dN (northing) → Three.js -Z
+        let ox = 0, oz = 0;
+        if (active?.terrain && p.terrain) {
+          const ax = (active.terrain.bounds.minX + active.terrain.bounds.maxX) / 2;
+          const ay = (active.terrain.bounds.minY + active.terrain.bounds.maxY) / 2;
+          const px = (p.terrain.bounds.minX + p.terrain.bounds.maxX) / 2;
+          const py = (p.terrain.bounds.minY + p.terrain.bounds.maxY) / 2;
+          ox = px - ax;
+          oz = -(py - ay); // flip Y → Three.js -Z
+        }
+        return { id: p.id, terrain: p.terrain!, offset: [ox, 0, oz] as [number, number, number] };
+      });
+  }, [projects, activeProjectId]);
 
   const gridConfig = useMemo(() => {
     if (!terrain) return { size: 2000, divisions: 40, y: 0 };
@@ -38,6 +61,13 @@ export function Canvas3D() {
       <ambientLight intensity={mode === 'sun' ? 0.25 : 0.6} />
       {mode !== 'sun' && <directionalLight position={[100, 200, 100]} intensity={0.8} />}
       <Suspense fallback={null}>
+        {/* Background projects (non-active) */}
+        {bgProjects.map(bg => (
+          <group key={bg.id} rotation={[0, (-northRotation * Math.PI) / 180, 0]}>
+            <TerrainMeshBg terrain={bg.terrain} position={bg.offset} />
+          </group>
+        ))}
+
         {terrain && (
           <group rotation={[0, (-northRotation * Math.PI) / 180, 0]}>
             <TerrainMesh />

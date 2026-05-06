@@ -16,6 +16,18 @@ import { detectVN2000Zone } from '../lib/coord/vn2000';
 import { findProvince } from '../lib/coord/provinces';
 import type { GeoInfo } from '../lib/coord/provinces';
 
+/** Snapshot của một dự án — lưu để switch qua lại */
+export interface StoredProject {
+  id: string;
+  name: string;
+  visible: boolean;          // có render trong scene không
+  terrain: TerrainData | null;
+  overlayLayers: OverlayLayer[];
+  geo: GeoInfo | null;
+  env: EnvParams;
+  viewpoint: { x: number; z: number; height: number } | null;
+}
+
 interface AnalysisCache {
   slope?: SlopeData;
   hydro?: HydrologyData;
@@ -49,6 +61,16 @@ interface State {
   cameraPreset: string | null;
   /** Thông tin địa lý phát hiện từ toạ độ VN2000 của file DXF */
   geo: GeoInfo | null;
+
+  // ── Multi-project ──────────────────────────────────────────────────────
+  projects: StoredProject[];
+  activeProjectId: string | null;
+  createProject: (name?: string) => void;
+  switchProject: (id: string) => void;
+  removeProject: (id: string) => void;
+  renameProject: (id: string, name: string) => void;
+  toggleProjectVisible: (id: string) => void;
+  // ──────────────────────────────────────────────────────────────────────
 
   setTerrain: (t: TerrainData | null) => void;
   setMode: (m: AnalysisMode) => void;
@@ -112,6 +134,11 @@ export const useSiteStore = create<State>((set, get) => ({
   showAllPeakElevations: false,
   cameraPreset: null,
   geo: null,
+  projects: [],
+  activeProjectId: null,
+
+  // ── Helper nội bộ: lưu state hiện tại vào project đang active ──────────
+  // (gọi trước khi switch, không expose ra ngoài)
 
   setTerrain: (t) => {
     if (!t) {
@@ -131,14 +158,50 @@ export const useSiteStore = create<State>((set, get) => ({
     const envPatch: Partial<EnvParams> = {};
     if (geo) envPatch.latitude = Math.round(geo.lat * 10) / 10;
 
-    set((s) => ({
-      terrain: t,
-      analysis: {},
-      viewpoint: null,
-      error: null,
-      geo,
-      env: { ...s.env, ...envPatch },
-    }));
+    set((s) => {
+      const newEnv = { ...s.env, ...envPatch };
+
+      // Đảm bảo có active project để chứa terrain này
+      let projects = s.projects;
+      let activeProjectId = s.activeProjectId;
+
+      const activeExists = activeProjectId && projects.some(p => p.id === activeProjectId);
+      if (!activeExists) {
+        // Chưa có project → tạo "Dự án 1"
+        const newId = `proj-${Date.now()}`;
+        const newProject: StoredProject = {
+          id: newId,
+          name: `Dự án ${projects.length + 1}`,
+          visible: true,
+          terrain: t,
+          overlayLayers: [],
+          geo,
+          env: newEnv,
+          viewpoint: null,
+        };
+        return {
+          terrain: t, analysis: {}, viewpoint: null, error: null, geo,
+          env: newEnv,
+          projects: [...projects, newProject],
+          activeProjectId: newId,
+          overlayLayers: [],
+        };
+      }
+
+      // Cập nhật terrain trong active project
+      projects = projects.map(p =>
+        p.id === activeProjectId
+          ? { ...p, terrain: t, geo, env: newEnv, overlayLayers: [], viewpoint: null }
+          : p
+      );
+
+      return {
+        terrain: t, analysis: {}, viewpoint: null, error: null, geo,
+        env: newEnv,
+        projects,
+        overlayLayers: [],
+      };
+    });
   },
   setLayerPattern: (p) => set({ layerPattern: p }),
   setMode: (m) => {
@@ -219,6 +282,98 @@ export const useSiteStore = create<State>((set, get) => ({
   toggleReportPanel: () => set((s) => ({ showReportPanel: !s.showReportPanel })),
   toggleAllPeakElevations: () => set((s) => ({ showAllPeakElevations: !s.showAllPeakElevations })),
   setCameraPreset: (v) => set({ cameraPreset: v }),
+
+  // ── Multi-project actions ────────────────────────────────────────────────
+
+  createProject: (name) => {
+    const s = get();
+    // Lưu state hiện tại vào project đang active
+    const updatedProjects = s.projects.map(p =>
+      p.id === s.activeProjectId
+        ? { ...p, terrain: s.terrain, overlayLayers: s.overlayLayers, geo: s.geo, env: s.env, viewpoint: s.viewpoint }
+        : p
+    );
+    const newId = `proj-${Date.now()}`;
+    const newProject: StoredProject = {
+      id: newId,
+      name: name ?? `Dự án ${updatedProjects.length + 1}`,
+      visible: true,
+      terrain: null,
+      overlayLayers: [],
+      geo: null,
+      env: DEFAULT_ENV,
+      viewpoint: null,
+    };
+    set({
+      projects: [...updatedProjects, newProject],
+      activeProjectId: newId,
+      terrain: null,
+      analysis: {},
+      overlayLayers: [],
+      geo: null,
+      env: DEFAULT_ENV,
+      viewpoint: null,
+    });
+  },
+
+  switchProject: (id) => {
+    const s = get();
+    if (id === s.activeProjectId) return;
+    const target = s.projects.find(p => p.id === id);
+    if (!target) return;
+
+    // Lưu state hiện tại vào active project
+    const updatedProjects = s.projects.map(p =>
+      p.id === s.activeProjectId
+        ? { ...p, terrain: s.terrain, overlayLayers: s.overlayLayers, geo: s.geo, env: s.env, viewpoint: s.viewpoint }
+        : p
+    );
+
+    set({
+      projects: updatedProjects,
+      activeProjectId: id,
+      terrain: target.terrain,
+      analysis: {},
+      overlayLayers: target.overlayLayers,
+      geo: target.geo,
+      env: target.env,
+      viewpoint: target.viewpoint,
+    });
+  },
+
+  removeProject: (id) => {
+    const s = get();
+    const remaining = s.projects.filter(p => p.id !== id);
+
+    if (id !== s.activeProjectId) {
+      // Xoá project không active → chỉ xoá khỏi list
+      set({ projects: remaining });
+      return;
+    }
+
+    // Xoá project đang active → chuyển sang project đầu tiên còn lại
+    const next = remaining[0] ?? null;
+    set({
+      projects: remaining,
+      activeProjectId: next?.id ?? null,
+      terrain: next?.terrain ?? null,
+      analysis: {},
+      overlayLayers: next?.overlayLayers ?? [],
+      geo: next?.geo ?? null,
+      env: next?.env ?? DEFAULT_ENV,
+      viewpoint: next?.viewpoint ?? null,
+    });
+  },
+
+  renameProject: (id, name) =>
+    set((s) => ({
+      projects: s.projects.map(p => p.id === id ? { ...p, name } : p),
+    })),
+
+  toggleProjectVisible: (id) =>
+    set((s) => ({
+      projects: s.projects.map(p => p.id === id ? { ...p, visible: !p.visible } : p),
+    })),
 
   generateReport: () => {
     const t = get().terrain;
