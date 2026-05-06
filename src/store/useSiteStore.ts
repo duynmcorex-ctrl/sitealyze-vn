@@ -67,6 +67,10 @@ interface State {
   /** Override tỉnh thủ công (khi auto-detect VN2000 fail) */
   setGeoOverride: (provinceName: string | null) => void;
 
+  /** Giao diện: 'dark' (mặc định) hoặc 'light' */
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
+
   // ── Multi-project ──────────────────────────────────────────────────────
   projects: StoredProject[];
   activeProjectId: string | null;
@@ -140,6 +144,7 @@ export const useSiteStore = create<State>((set, get) => ({
   cameraPreset: null,
   geo: null,
   showRoads: true,
+  theme: 'dark',
   projects: [],
   activeProjectId: null,
 
@@ -286,6 +291,15 @@ export const useSiteStore = create<State>((set, get) => ({
   setOverlayLayers: (layers) => set({ overlayLayers: layers }),
 
   toggleRoads: () => set((s) => ({ showRoads: !s.showRoads })),
+
+  toggleTheme: () => {
+    const next = get().theme === 'dark' ? 'light' : 'dark';
+    set({ theme: next });
+    // Áp dụng/gỡ class 'light' trên <html> để CSS variables chuyển theo
+    document.documentElement.classList.toggle('light', next === 'light');
+    // Lưu preference vào localStorage
+    try { localStorage.setItem('siteAlyzeTheme', next); } catch { /* ignore */ }
+  },
 
   setGeoOverride: (provinceName) => {
     const newGeo = provinceName ? makeGeoFromProvinceName(provinceName) : null;

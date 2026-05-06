@@ -23,6 +23,7 @@ export function Canvas3D() {
   const showGrid        = useSiteStore((s) => s.showGrid);
   const projects        = useSiteStore((s) => s.projects);
   const activeProjectId = useSiteStore((s) => s.activeProjectId);
+  const theme           = useSiteStore((s) => s.theme);
 
   // Background projects: visible, not active, có terrain
   const bgProjects = useMemo(() => {
@@ -57,10 +58,14 @@ export function Canvas3D() {
       camera={{ position: [200, 200, 200], fov: 45, near: 0.1, far: 10000 }}
       shadows={mode === 'sun'}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
-      style={{ background: 'linear-gradient(180deg, #060912 0%, #0a0e1a 100%)' }}
+      style={{
+        background: theme === 'light'
+          ? 'linear-gradient(180deg, #b8cce4 0%, #cdd9e8 100%)'
+          : 'linear-gradient(180deg, #060912 0%, #0a0e1a 100%)',
+      }}
     >
-      <ambientLight intensity={mode === 'sun' ? 0.25 : 0.6} />
-      {mode !== 'sun' && <directionalLight position={[100, 200, 100]} intensity={0.8} />}
+      <ambientLight intensity={mode === 'sun' ? 0.25 : theme === 'light' ? 0.9 : 0.6} />
+      {mode !== 'sun' && <directionalLight position={[100, 200, 100]} intensity={theme === 'light' ? 1.1 : 0.8} />}
       <Suspense fallback={null}>
         {/* Background projects (non-active) */}
         {bgProjects.map(bg => (

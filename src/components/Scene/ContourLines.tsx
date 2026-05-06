@@ -31,6 +31,8 @@ export function ContourLines() {
     if (!segments || segments.length === 0) return { geometry: null, labelPoints: [] };
 
     const hm       = terrain.heightmap;
+    // Offset = 1% của tổng relief (tối thiểu 1m) để tránh Z-fighting sau smooth heightmap
+    const zOffset  = Math.max(1.0, (hm.maxZ - hm.minZ) * 0.01);
     const positions: number[] = [];
     const colors: number[]    = [];
     const sc = new THREE.Color(singleColor);
@@ -50,15 +52,15 @@ export function ContourLines() {
 
       for (const path of seg.paths) {
         for (let i = 0; i < path.length - 1; i++) {
-          positions.push(path[i].x,   seg.elevation + 0.5, path[i].y);
-          positions.push(path[i+1].x, seg.elevation + 0.5, path[i+1].y);
+          positions.push(path[i].x,   seg.elevation + zOffset, path[i].y);
+          positions.push(path[i+1].x, seg.elevation + zOffset, path[i+1].y);
           colors.push(r, g, b, r, g, b);
         }
         // Điểm ngoài cùng bên phải (+X lớn nhất) → đặt nhãn
         for (const pt of path) {
           const prev = labelMap.get(seg.elevation);
           if (!prev || pt.x > prev.x) {
-            labelMap.set(seg.elevation, { x: pt.x, y: seg.elevation + 1.5, z: pt.y });
+            labelMap.set(seg.elevation, { x: pt.x, y: seg.elevation + zOffset + 1.0, z: pt.y });
           }
         }
       }
@@ -78,14 +80,20 @@ export function ContourLines() {
 
     return { geometry: g, labelPoints };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrain, analysis.contours, colorMode, singleColor, useOriginal]);
+  }, [terrain, analysis.contours, colorMode, singleColor, useOriginal, terrain?.heightmap.minZ, terrain?.heightmap.maxZ]);
 
   if (!geometry) return null;
 
   return (
     <>
-      <lineSegments geometry={geometry}>
-        <lineBasicMaterial vertexColors transparent opacity={opacity} />
+      {/* renderOrder=1 đảm bảo vẽ sau terrain mesh (renderOrder=0 mặc định) */}
+      <lineSegments geometry={geometry} renderOrder={1}>
+        <lineBasicMaterial
+          vertexColors
+          transparent
+          opacity={opacity}
+          depthWrite={false}
+        />
       </lineSegments>
 
       {showLabels && labelPoints.map(({ elev, pos, hex }) => (

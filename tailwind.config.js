@@ -1,17 +1,20 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Dùng class-strategy: <html class="light"> → light mode
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
         bg: {
-          base: '#0a0e1a',
-          panel: '#0f1524',
-          card: '#151c2e',
+          // RGB variables → opacity modifiers vẫn hoạt động: bg-bg-base/50
+          base:  'rgb(var(--bg-base)  / <alpha-value>)',
+          panel: 'rgb(var(--bg-panel) / <alpha-value>)',
+          card:  'rgb(var(--bg-card)  / <alpha-value>)',
         },
         accent: {
-          teal: '#22d3c5',
-          cyan: '#06b6d4',
+          teal: 'rgb(var(--accent-teal) / <alpha-value>)',
+          cyan: 'rgb(var(--accent-cyan) / <alpha-value>)',
         },
       },
       fontFamily: {

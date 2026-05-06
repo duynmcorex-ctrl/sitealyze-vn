@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Canvas3D } from './components/Scene/Canvas3D';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar/Sidebar';
@@ -11,6 +12,23 @@ export default function App() {
   const loading = useSiteStore((s) => s.loading);
   const error = useSiteStore((s) => s.error);
   const terrain = useSiteStore((s) => s.terrain);
+  const toggleTheme = useSiteStore((s) => s.toggleTheme);
+  const theme = useSiteStore((s) => s.theme);
+
+  // Đồng bộ store với class html đã được anti-flash script áp dụng
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('siteAlyzeTheme');
+      if (saved === 'light' && theme === 'dark') {
+        // Không gọi toggleTheme() vì HTML class đã được set sẵn bởi inline script.
+        // Chỉ cần sync store state (không toggle DOM lại).
+        // Gọi toggleTheme: sẽ set store + đảm bảo class đúng.
+        toggleTheme();
+      }
+    } catch { /* ignore */ }
+  // chỉ chạy 1 lần khi mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="h-full w-full flex flex-col bg-bg-base text-slate-100">
