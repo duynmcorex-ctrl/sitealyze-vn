@@ -1,4 +1,4 @@
-import { Grid3x3, Layers } from 'lucide-react';
+import { Grid3x3, Layers, MapPin } from 'lucide-react';
 import { useSiteStore } from '../../store/useSiteStore';
 import type { SlopeClassMode } from '../../lib/analysis/slope';
 
@@ -13,6 +13,7 @@ export function EnvParams() {
   const showContourOverlay   = useSiteStore((s) => s.showContourOverlay);
   const toggleContourOverlay = useSiteStore((s) => s.toggleContourOverlay);
   const terrain              = useSiteStore((s) => s.terrain);
+  const geo                  = useSiteStore((s) => s.geo);
 
   // Hiện style options khi đang ở mode contour HOẶC khi overlay bật
   const showContourStyle    = mode === 'contour' || showContourOverlay;
@@ -29,8 +30,26 @@ export function EnvParams() {
         onChange={(v) => setEnv({ northRotation: v })} />
       <Slider label="Hướng gió"  value={env.windDirection} min={0}    max={359} step={1}   suffix="°"
         onChange={(v) => setEnv({ windDirection: v })} />
-      <Slider label="Vĩ độ"      value={env.latitude}      min={-23}  max={23}  step={1}   suffix="°N"
+      <Slider label="Vĩ độ"      value={env.latitude}      min={8}    max={24}  step={0.1} suffix="°N"
         onChange={(v) => setEnv({ latitude: v })} />
+
+      {/* ── Vị trí địa lý phát hiện từ VN2000 ── */}
+      {geo ? (
+        <div className="flex items-start gap-2 px-2 py-1.5 rounded-md bg-accent-teal/10 border border-accent-teal/30">
+          <MapPin size={12} className="text-accent-teal mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold text-accent-teal truncate">{geo.province}</div>
+            <div className="text-[10px] text-slate-400 leading-tight">
+              Vùng KH: {geo.climateLabel} &nbsp;·&nbsp;
+              {geo.lat.toFixed(2)}°N, {geo.lon.toFixed(2)}°E
+            </div>
+          </div>
+        </div>
+      ) : terrain ? (
+        <div className="text-[10px] text-slate-500 px-1">
+          Không nhận dạng được toạ độ VN-2000 (toạ độ địa phương hoặc không chuẩn)
+        </div>
+      ) : null}
 
       {/* ── Toggle đường đồng mức overlay — luôn hiện khi có terrain ── */}
       {terrain && (

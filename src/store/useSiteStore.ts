@@ -12,6 +12,9 @@ import { computeSuitability } from '../lib/analysis/suitability';
 import { computeContourLines } from '../lib/analysis/contours';
 import { computeViewshed } from '../lib/analysis/viewshed';
 import { buildReport } from '../lib/report/generateReport';
+import { detectVN2000Zone } from '../lib/coord/vn2000';
+import { findProvince } from '../lib/coord/provinces';
+import type { GeoInfo } from '../lib/coord/provinces';
 
 interface AnalysisCache {
   slope?: SlopeData;
@@ -44,6 +47,8 @@ interface State {
   reportLoading: boolean;
   showAllPeakElevations: boolean;
   cameraPreset: string | null;
+  /** Thông tin địa lý phát hiện từ toạ độ VN2000 của file DXF */
+  geo: GeoInfo | null;
 
   setTerrain: (t: TerrainData | null) => void;
   setMode: (m: AnalysisMode) => void;
@@ -106,8 +111,35 @@ export const useSiteStore = create<State>((set, get) => ({
   reportLoading: false,
   showAllPeakElevations: false,
   cameraPreset: null,
+  geo: null,
 
-  setTerrain: (t) => set({ terrain: t, analysis: {}, viewpoint: null, error: null }),
+  setTerrain: (t) => {
+    if (!t) {
+      set({ terrain: null, analysis: {}, viewpoint: null, error: null, geo: null });
+      return;
+    }
+    // Tự động phát hiện tỉnh + vùng khí hậu từ toạ độ VN2000 trung tâm
+    let geo: GeoInfo | null = null;
+    try {
+      const cx = (t.bounds.minX + t.bounds.maxX) / 2;
+      const cy = (t.bounds.minY + t.bounds.maxY) / 2;
+      const zone = detectVN2000Zone(cx, cy);
+      if (zone) geo = findProvince(zone.lat, zone.lon);
+    } catch { /* không crash nếu toạ độ không hợp lệ */ }
+
+    // Tự động cập nhật vĩ độ nếu phát hiện được tỉnh
+    const envPatch: Partial<EnvParams> = {};
+    if (geo) envPatch.latitude = Math.round(geo.lat * 10) / 10;
+
+    set((s) => ({
+      terrain: t,
+      analysis: {},
+      viewpoint: null,
+      error: null,
+      geo,
+      env: { ...s.env, ...envPatch },
+    }));
+  },
   setLayerPattern: (p) => set({ layerPattern: p }),
   setMode: (m) => {
     set({ mode: m });
