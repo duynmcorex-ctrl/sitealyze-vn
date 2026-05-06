@@ -13,7 +13,7 @@ import { computeContourLines } from '../lib/analysis/contours';
 import { computeViewshed } from '../lib/analysis/viewshed';
 import { buildReport } from '../lib/report/generateReport';
 import { detectVN2000Zone } from '../lib/coord/vn2000';
-import { findProvince } from '../lib/coord/provinces';
+import { findProvince, makeGeoFromProvinceName } from '../lib/coord/provinces';
 import type { GeoInfo } from '../lib/coord/provinces';
 
 /** Snapshot của một dự án — lưu để switch qua lại */
@@ -64,6 +64,8 @@ interface State {
 
   showRoads: boolean;
   toggleRoads: () => void;
+  /** Override tỉnh thủ công (khi auto-detect VN2000 fail) */
+  setGeoOverride: (provinceName: string | null) => void;
 
   // ── Multi-project ──────────────────────────────────────────────────────
   projects: StoredProject[];
@@ -284,6 +286,21 @@ export const useSiteStore = create<State>((set, get) => ({
   setOverlayLayers: (layers) => set({ overlayLayers: layers }),
 
   toggleRoads: () => set((s) => ({ showRoads: !s.showRoads })),
+
+  setGeoOverride: (provinceName) => {
+    const newGeo = provinceName ? makeGeoFromProvinceName(provinceName) : null;
+    set((s) => {
+      const envPatch: Partial<EnvParams> = {};
+      if (newGeo) envPatch.latitude = Math.round(newGeo.lat * 10) / 10;
+      // Cập nhật cả active project trong projects[] (nếu có)
+      const projects = s.projects.map(p =>
+        p.id === s.activeProjectId
+          ? { ...p, geo: newGeo, env: { ...p.env, ...envPatch } }
+          : p
+      );
+      return { geo: newGeo, env: { ...s.env, ...envPatch }, projects };
+    });
+  },
   toggleReportPanel: () => set((s) => ({ showReportPanel: !s.showReportPanel })),
   toggleAllPeakElevations: () => set((s) => ({ showAllPeakElevations: !s.showAllPeakElevations })),
   setCameraPreset: (v) => set({ cameraPreset: v }),

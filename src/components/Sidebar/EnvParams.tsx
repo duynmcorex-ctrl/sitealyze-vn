@@ -1,6 +1,7 @@
 import { Grid3x3, Layers, MapPin, Route } from 'lucide-react';
 import { useSiteStore } from '../../store/useSiteStore';
 import type { SlopeClassMode } from '../../lib/analysis/slope';
+import { PROVINCES } from '../../lib/coord/provinces';
 
 export function EnvParams() {
   const env                  = useSiteStore((s) => s.env);
@@ -16,6 +17,7 @@ export function EnvParams() {
   const geo                  = useSiteStore((s) => s.geo);
   const showRoads            = useSiteStore((s) => s.showRoads);
   const toggleRoads          = useSiteStore((s) => s.toggleRoads);
+  const setGeoOverride       = useSiteStore((s) => s.setGeoOverride);
   const overlayLayers        = useSiteStore((s) => s.overlayLayers);
   const hasRoads             = overlayLayers.some(l => l.isRoad);
 
@@ -37,23 +39,54 @@ export function EnvParams() {
       <Slider label="Vĩ độ"      value={env.latitude}      min={8}    max={24}  step={0.1} suffix="°N"
         onChange={(v) => setEnv({ latitude: v })} />
 
-      {/* ── Vị trí địa lý phát hiện từ VN2000 ── */}
-      {geo ? (
-        <div className="flex items-start gap-2 px-2 py-1.5 rounded-md bg-accent-teal/10 border border-accent-teal/30">
-          <MapPin size={12} className="text-accent-teal mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold text-accent-teal truncate">{geo.province}</div>
-            <div className="text-[10px] text-slate-400 leading-tight">
-              Vùng KH: {geo.climateLabel} &nbsp;·&nbsp;
-              {geo.lat.toFixed(2)}°N, {geo.lon.toFixed(2)}°E
+      {/* ── Vị trí địa lý: tự phát hiện hoặc chọn thủ công ── */}
+      {terrain && (
+        <div className="space-y-1.5">
+          {geo ? (
+            <div className="flex items-start gap-2 px-2 py-1.5 rounded-md bg-accent-teal/10 border border-accent-teal/30">
+              <MapPin size={12} className="text-accent-teal mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold text-accent-teal truncate">{geo.province}</div>
+                <div className="text-[10px] text-slate-400 leading-tight">
+                  Vùng KH: {geo.climateLabel} &nbsp;·&nbsp;
+                  {geo.lat.toFixed(2)}°N, {geo.lon.toFixed(2)}°E
+                </div>
+                {geo.composedOf && (
+                  <div className="text-[10px] text-slate-500 italic leading-tight">
+                    {geo.composedOf}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setGeoOverride(null)}
+                title="Xoá lựa chọn để tự phát hiện lại"
+                className="text-[10px] text-slate-500 hover:text-slate-300 transition shrink-0"
+              >
+                ✕
+              </button>
             </div>
-          </div>
+          ) : (
+            <div className="text-[10px] text-amber-400/80 px-1 leading-tight">
+              ⚠ Không nhận dạng được toạ độ VN-2000 (file CAD đã re-center về 0,0).
+              Chọn tỉnh bên dưới để app dùng đúng vĩ độ + khí hậu địa phương.
+            </div>
+          )}
+          <select
+            value={geo?.province ?? ''}
+            onChange={(e) => setGeoOverride(e.target.value || null)}
+            className="w-full px-2 py-1.5 rounded-md bg-bg-card border border-white/10
+                       text-[11px] text-slate-200 outline-none hover:border-accent-teal/40
+                       focus:border-accent-teal transition"
+          >
+            <option value="">— Chọn tỉnh thủ công (34 ĐVHC sau sáp nhập) —</option>
+            {PROVINCES.map(p => (
+              <option key={p.name} value={p.name}>
+                {p.name}{p.composedOf ? ` (${p.composedOf})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
-      ) : terrain ? (
-        <div className="text-[10px] text-slate-500 px-1">
-          Không nhận dạng được toạ độ VN-2000 (toạ độ địa phương hoặc không chuẩn)
-        </div>
-      ) : null}
+      )}
 
       {/* ── Toggle đường đồng mức overlay — luôn hiện khi có terrain ── */}
       {terrain && (
