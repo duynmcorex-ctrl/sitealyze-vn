@@ -63,6 +63,7 @@ export function buildElevationSection(
       `Vùng cao tập trung phía ${DIR_NAMES_VI[top.dir]} (${top.pct.toFixed(0)}% top 15% diện tích).`,
       `Vùng thấp tập trung phía ${DIR_NAMES_VI[bot.dir]} (${bot.pct.toFixed(0)}% bottom 15% diện tích).`,
       `Đặc tính chênh cao ${intensityLabel} (${(slopeIntensity * 100).toFixed(1)} m / 100 m ngang).`,
+      'QCVN 01:2021/BXD §2.8 — Cao độ nền tối thiểu = mực nước ngập tính toán + 0,3 m (dân dụng/nhà ở) hoặc + 0,5 m (công nghiệp, kho). Chu kỳ lũ tính toán: đô thị loại I = 100 năm, loại II–IV = 50 năm, loại V và cây xanh = 10 năm (bảng 2.13).',
     ],
   };
 }
@@ -123,11 +124,12 @@ export function buildSlopeSection(
     recommendations.push('Khu vực >45° (nguy hiểm) chiếm đáng kể — cần khảo sát địa chất kiểm tra rủi ro sạt trượt.');
   }
   if (slopeMode === 'percent' && hist.pct[3] > 50) {
-    recommendations.push('Hơn 50% diện tích >30% — theo QCVN cần thẩm định nền đất, ổn định mái taluy.');
+    recommendations.push('Hơn 50% diện tích >30% — theo QCVN 01:2021/BXD §2.8.1 cần thẩm định nền đất, ổn định mái taluy; độ dốc san nền phải ≥ 0,3% để thoát nước mặt, tối thiểu 0,1% ở vùng khó thoát.');
   }
   if (buildablePct < 20) {
-    recommendations.push('Khuyến nghị giữ phần lớn diện tích làm cây xanh / cảnh quan, chỉ xây trên các "thềm" hợp lý.');
+    recommendations.push('Khuyến nghị giữ phần lớn diện tích làm cây xanh / cảnh quan (mật độ XD gộp cây xanh ≤ 5% theo QCVN 01:2021), chỉ xây trên các "thềm" hợp lý.');
   }
+  recommendations.push('Đảm bảo đất xây dựng đạt cao độ nền ≥ mực nước ngập tính toán theo chu kỳ phù hợp loại đô thị (QCVN 01:2021/BXD §2.8).');
 
   return {
     id: 'slope',
@@ -311,7 +313,10 @@ export function buildHydrologySection(
       { label: 'Diện tích tích tụ cao (top 10%)', value: fmtPct(topAccumPct) },
       { label: 'Hướng chảy chính', value: D8_NAMES_VI[domD] },
     ],
-    notes: hotspotLines,
+    notes: [
+      ...hotspotLines,
+      'Tham chiếu QCVN 07-2:2016 §4: chu kỳ tràn cống thoát nước mưa = 0,5–2 năm (đường nội bộ/khu ở), 2–5 năm (đường khu vực/trung tâm), ≥ 10 năm (đường trục/tuyến trọng yếu). Cần xác định lưu lượng mưa thiết kế theo phân vùng khí hậu địa phương.',
+    ],
     recommendations: hotspots[0]?.accum > 200 ? [
       'Tại các vùng tích tụ chính: thiết kế mương thu, hồ điều hoà hoặc bãi thấm.',
       'Tránh xây dựng nhà ở/công trình quan trọng trên đường tụ thủy chính.',
@@ -362,11 +367,12 @@ export function buildSuitabilitySection(
 
   const recommendations: string[] = [];
   if (badPct > 40) {
-    recommendations.push(`${fmtPct(badPct)} không phù hợp xây dựng — nên giữ làm rừng/cây xanh tự nhiên.`);
+    recommendations.push(`${fmtPct(badPct)} không phù hợp xây dựng — nên giữ làm rừng/cây xanh tự nhiên (mật độ XD gộp cây xanh ≤ 5% theo QCVN 01:2021/BXD bảng 2.7).`);
   }
   if (goodPct > 30) {
     recommendations.push('Tập trung công trình tại các vùng "Rất phù hợp" và "Phù hợp" để tối ưu chi phí xây dựng.');
   }
+  recommendations.push('QCVN 01:2021/BXD §2.8 — Đất xây dựng đủ điều kiện khi: (1) cao độ nền ≥ mực ngập + 0,3 m; (2) độ dốc san nền ≥ 0,3%; (3) địa chất không có hang hốc, lũ quét, sạt trượt. Cần thẩm định thực địa trước khi phê duyệt quy hoạch.');
 
   return {
     id: 'suitability',
