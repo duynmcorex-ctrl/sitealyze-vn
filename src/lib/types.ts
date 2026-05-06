@@ -64,6 +64,8 @@ export interface OverlayLayer {
   color: string;           // CSS hex, hiện tại (có thể bị ghi đè)
   originalColor?: string;  // màu gốc từ file CAD (để reset)
   visible: boolean;
+  /** Tự động tag là layer giao thông (regex GIAOTHONG, GT, DUONG …) */
+  isRoad?: boolean;
   /** Polylines in Three.js centered world space, ready to render */
   polylines: { x: number; y: number; z: number }[][];
 }

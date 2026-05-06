@@ -1,4 +1,4 @@
-import { Grid3x3, Layers, MapPin } from 'lucide-react';
+import { Grid3x3, Layers, MapPin, Route } from 'lucide-react';
 import { useSiteStore } from '../../store/useSiteStore';
 import type { SlopeClassMode } from '../../lib/analysis/slope';
 
@@ -14,6 +14,10 @@ export function EnvParams() {
   const toggleContourOverlay = useSiteStore((s) => s.toggleContourOverlay);
   const terrain              = useSiteStore((s) => s.terrain);
   const geo                  = useSiteStore((s) => s.geo);
+  const showRoads            = useSiteStore((s) => s.showRoads);
+  const toggleRoads          = useSiteStore((s) => s.toggleRoads);
+  const overlayLayers        = useSiteStore((s) => s.overlayLayers);
+  const hasRoads             = overlayLayers.some(l => l.isRoad);
 
   // Hiện style options khi đang ở mode contour HOẶC khi overlay bật
   const showContourStyle    = mode === 'contour' || showContourOverlay;
@@ -64,6 +68,23 @@ export function EnvParams() {
           >
             <Layers size={13} />
             {showContourOverlay ? 'Ẩn đường đồng mức' : 'Hiện đường đồng mức'}
+          </button>
+        </div>
+      )}
+
+      {/* ── Toggle giao thông hiện trạng ── */}
+      {terrain && hasRoads && (
+        <div className="pt-1">
+          <button
+            onClick={toggleRoads}
+            className={`w-full flex items-center justify-center gap-2 py-2 rounded-md
+                        text-xs font-bold uppercase tracking-wider border transition
+                        ${showRoads
+                          ? 'bg-yellow-400/15 border-yellow-400/50 text-yellow-300'
+                          : 'bg-bg-card border-white/10 text-slate-400 hover:border-yellow-400/30 hover:text-slate-200'}`}
+          >
+            <Route size={13} />
+            {showRoads ? 'Ẩn giao thông' : 'Hiện giao thông'}
           </button>
         </div>
       )}

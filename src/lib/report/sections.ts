@@ -554,6 +554,80 @@ export function buildViewshedSection(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 10. Giao thông & Tiếp cận
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { RoadsAnalysis } from '../analysis/roads';
+
+export function buildRoadsSection(roads: RoadsAnalysis | undefined): ReportSection {
+  if (!roads || roads.totalLengthM === 0) {
+    return {
+      id: 'roads',
+      title: '10. Giao thông & Tiếp cận',
+      icon: '🛣️',
+      summary: 'Không phát hiện layer giao thông trong dữ liệu.',
+      metrics: [],
+      notes: [
+        'Để phân tích giao thông, tải file DXF chứa layer có tên GIAOTHONG, GT, DUONG, ROAD... vào mục Lớp dữ liệu.',
+        'App sẽ tự nhận diện và phân tích chiều dài, độ dốc dọc, hệ số tiếp cận.',
+      ],
+      empty: true,
+      emptyMessage: 'Chưa có dữ liệu giao thông',
+    };
+  }
+
+  const { totalLengthM, segments, accessibilityPct } = roads;
+
+  const bullets: string[] = [];
+  bullets.push(`Tổng chiều dài hệ thống đường: ${(totalLengthM / 1000).toFixed(2)} km.`);
+
+  // Phân tích độ dốc dọc theo TCVN
+  const steepSegments = segments.filter(s => s.maxSlopePct > 8);
+  if (steepSegments.length > 0) {
+    bullets.push(
+      `${steepSegments.length} tuyến có độ dốc dọc max > 8% (giới hạn QCVN 04:2012 cho đường đô thị loại III–IV): ` +
+      steepSegments.map(s => `${s.name} (max ${s.maxSlopePct.toFixed(1)}%)`).join(', ') + '.'
+    );
+  } else {
+    bullets.push('Tất cả tuyến đường có độ dốc dọc ≤ 8%, trong giới hạn thiết kế đường đô thị.');
+  }
+
+  if (accessibilityPct >= 80) {
+    bullets.push(`Hệ số tiếp cận ${accessibilityPct}% — rất tốt, đường bao phủ gần toàn bộ chu vi khu đất.`);
+  } else if (accessibilityPct >= 50) {
+    bullets.push(`Hệ số tiếp cận ${accessibilityPct}% — đạt yêu cầu; một số cạnh khu đất chưa có đường tiếp cận trực tiếp.`);
+  } else {
+    bullets.push(`Hệ số tiếp cận thấp (${accessibilityPct}%) — cần bổ sung đường/lối vào trên các cạnh chưa có tiếp cận.`);
+  }
+
+  // Phân tích theo QCVN 01:2021/BXD bảng 2.17 — lộ giới (không có trong data, ghi chú hướng dẫn)
+  bullets.push('Theo QCVN 01:2021/BXD bảng 2.17: đường trục chính ≥ 24m, đường khu vực ≥ 12m, nội bộ ≥ 6m. Cần kiểm tra lộ giới thiết kế thực tế trên bản vẽ CAD.');
+
+  const metrics = [
+    { label: 'Tổng chiều dài', value: `${(totalLengthM / 1000).toFixed(2)} km` },
+    { label: 'Số tuyến', value: `${segments.length}` },
+    { label: 'Tiếp cận chu vi', value: `${accessibilityPct}%`, emphasis: (accessibilityPct >= 50 ? 'good' : 'warn') as 'good' | 'warn' | 'bad' },
+  ];
+
+  // Thêm tuyến có độ dốc max cao nhất
+  const maxSlopeSegment = segments.reduce((a, b) => a.maxSlopePct > b.maxSlopePct ? a : b);
+  metrics.push({ label: 'Dốc dọc max', value: `${maxSlopeSegment.maxSlopePct.toFixed(1)}%`, emphasis: maxSlopeSegment.maxSlopePct > 8 ? 'warn' : 'good' });
+
+  return {
+    id: 'roads',
+    title: '10. Giao thông & Tiếp cận',
+    icon: '🛣️',
+    summary: `Phát hiện ${segments.length} tuyến đường, tổng ${(totalLengthM / 1000).toFixed(2)} km. Hệ số tiếp cận chu vi: ${accessibilityPct}%.`,
+    metrics,
+    notes: bullets,
+    recommendations: steepSegments.length > 0 ? [
+      'Kiểm tra và điều chỉnh tuyến có dốc dọc > 8% trước khi lập dự án đầu tư.',
+      'Đảm bảo tầm nhìn dừng xe ≥ 40m trên đoạn dốc > 5% (theo TCVN 4054:2005).',
+    ] : undefined,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 

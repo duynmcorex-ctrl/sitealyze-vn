@@ -1,8 +1,9 @@
-import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route } from 'lucide-react';
 import { useRef } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
 import { parseOverlayDxfGroups, groupToWorldSpace } from '../../lib/dxf/parseOverlayDxf';
 import { saveProject, loadProject } from '../../lib/project/saveLoad';
+import { isRoadLayer } from '../../lib/analysis/roads';
 import type { OverlayLayer } from '../../lib/types';
 
 export function LayerPanel() {
@@ -48,6 +49,7 @@ export function LayerPanel() {
         color: group.color,           // màu gốc từ DXF
         originalColor: group.color,   // lưu để reset
         visible: true,
+        isRoad: isRoadLayer(group.layerName), // auto-tag giao thông
         polylines: worldPolylines,
       };
       addOverlayLayer(layer);
@@ -169,6 +171,13 @@ function LayerRow({
         >
           <RotateCcw size={10} />
         </button>
+      )}
+
+      {/* Road badge */}
+      {layer.isRoad && (
+        <span title="Layer giao thông — hiển thị qua nút 'Giao thông'">
+          <Route size={10} className="text-yellow-400 flex-shrink-0" />
+        </span>
       )}
 
       {/* Name (editable) */}

@@ -62,6 +62,9 @@ interface State {
   /** Thông tin địa lý phát hiện từ toạ độ VN2000 của file DXF */
   geo: GeoInfo | null;
 
+  showRoads: boolean;
+  toggleRoads: () => void;
+
   // ── Multi-project ──────────────────────────────────────────────────────
   projects: StoredProject[];
   activeProjectId: string | null;
@@ -134,6 +137,7 @@ export const useSiteStore = create<State>((set, get) => ({
   showAllPeakElevations: false,
   cameraPreset: null,
   geo: null,
+  showRoads: true,
   projects: [],
   activeProjectId: null,
 
@@ -279,6 +283,7 @@ export const useSiteStore = create<State>((set, get) => ({
     })),
   setOverlayLayers: (layers) => set({ overlayLayers: layers }),
 
+  toggleRoads: () => set((s) => ({ showRoads: !s.showRoads })),
   toggleReportPanel: () => set((s) => ({ showReportPanel: !s.showReportPanel })),
   toggleAllPeakElevations: () => set((s) => ({ showAllPeakElevations: !s.showAllPeakElevations })),
   setCameraPreset: (v) => set({ cameraPreset: v }),
@@ -404,6 +409,7 @@ export const useSiteStore = create<State>((set, get) => ({
 
     set({ analysis: a });
 
+    const roadLayers = get().overlayLayers.filter(l => l.isRoad && l.visible);
     const report = buildReport({
       heightmap: t.heightmap,
       env,
@@ -415,6 +421,7 @@ export const useSiteStore = create<State>((set, get) => ({
       contours: a.contours,
       viewshed: a.viewshed,
       viewpoint: get().viewpoint,
+      roadLayers,
     });
 
     set({ report, reportLoading: false, showReportPanel: true });

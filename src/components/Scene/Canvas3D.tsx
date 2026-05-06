@@ -10,6 +10,7 @@ import { SunLight } from './SunLight';
 import { WindParticles } from './WindParticles';
 import { ViewpointMarker } from './ViewpointMarker';
 import { OverlayLayerRenderer } from './OverlayLayerRenderer';
+import { RoadsRender } from './RoadsRender';
 import { AutoFit } from './AutoFit';
 import { CameraPreset } from './CameraPreset';
 import { useSiteStore } from '../../store/useSiteStore';
@@ -79,6 +80,7 @@ export function Canvas3D() {
             {mode === 'wind' && <WindParticles />}
             {mode === 'viewshed' && <ViewpointMarker />}
             <OverlayLayerRenderer />
+            <RoadsRender />
             {showGrid && (
               <gridHelper
                 args={[gridConfig.size, gridConfig.divisions, '#1f2937', '#1f2937']}
