@@ -1,11 +1,13 @@
-import type { Heightmap, ReportSection, EnvParams } from '../types';
+import type { Heightmap, ReportSection, ReportMetric, EnvParams } from '../types';
 import type { SlopeData, SlopeClassMode } from '../analysis/slope';
 import type { HydrologyData } from '../analysis/hydrology';
 import type { TerrainFeatures } from '../analysis/features';
 import type { SuitabilityData } from '../analysis/suitability';
 import type { ContourLineSegment } from '../analysis/contours';
+import type { GeoInfo } from '../coord/provinces';
 import { getSlopeClasses, SUITABILITY_CLASSES_REF as SUIT_CLASSES_FALLBACK } from './_classRefs';
 import { computeSunPosition } from '../analysis/sun';
+import { getWindClimate, getRainfallClimate, climateZoneDescription } from '../analysis/climatology';
 import {
   histogramAspect, histogramSlopeClass, terrainArea, terrainBboxSize,
   extremeZRegionDirection, accumulationHotspots, fmtArea, fmtMeters, fmtPct,
@@ -398,8 +400,9 @@ export function buildSunSection(
   hm: Heightmap,
   env: EnvParams,
   aspectHist: ReturnType<typeof histogramAspect> | undefined,
+  geo?: GeoInfo | null,
 ): ReportSection {
-  const sun = computeSunPosition(env.month, env.hour, env.latitude, 105, env.northRotation);
+  const sun = computeSunPosition(env.month, env.hour, env.latitude, geo?.lon ?? 105, env.northRotation);
   const altDeg = sun.altitude * 180 / Math.PI;
   const azDeg = (sun.azimuth * 180 / Math.PI + 360) % 360;
 
@@ -424,20 +427,38 @@ export function buildSunSection(
 
   const azName = aspectName(azDeg);
 
+  // Ghi chú bổ sung theo vùng khí hậu (nếu đã xác định địa phương)
+  const climateNotes: string[] = [];
+  if (geo) {
+    const rainfall = getRainfallClimate(geo.climateZone);
+    const isDry = rainfall.dryMonths.includes(env.month);
+    climateNotes.push(
+      `Địa điểm: ${geo.province} (${geo.lat.toFixed(2)}°N, ${geo.lon.toFixed(2)}°E) — ${climateZoneDescription(geo.climateZone)}.`,
+    );
+    if (isDry) {
+      climateNotes.push(`Tháng ${env.month} là mùa khô tại ${geo.climateLabel} — nắng nhiều, ít mây, bức xạ cao. Cần giải pháp che nắng hiệu quả.`);
+    } else {
+      climateNotes.push(`Tháng ${env.month} thuộc mùa mưa tại ${geo.climateLabel} — nhiều mây, bức xạ trực tiếp giảm, nhưng độ ẩm cao.`);
+    }
+  } else {
+    climateNotes.push(`Vĩ độ ${env.latitude}°N — đặc trưng vùng ${env.latitude > 18 ? 'Bắc Trung Bộ trở ra' : 'Nam Trung Bộ trở vào'}. Chọn tỉnh trong phần Vị trí để có đánh giá chính xác hơn.`);
+  }
+
   return {
     id: 'sun',
     title: '7. Nắng & bóng đổ',
     icon: '☀️',
-    summary: `Tháng ${env.month}, ${env.hour}h, vĩ độ ${env.latitude}°N: mặt trời ở ${altDeg.toFixed(0)}° hướng ${azName}. ${solarPotential}`,
+    summary: `Tháng ${env.month}, ${env.hour}h${geo ? `, ${geo.province.replace('Tỉnh ', '').replace('TP. ', '').replace('Thủ đô ', '')}` : ''}: mặt trời ở ${altDeg.toFixed(0)}° hướng ${azName}. ${solarPotential}`,
     metrics: [
       { label: 'Góc cao mặt trời', value: `${altDeg.toFixed(0)}°` },
       { label: 'Hướng mặt trời',   value: azName },
       { label: 'Tình trạng',       value: timeOfDay },
       { label: 'Sườn đón nắng (E/SE/S/SW/W)', value: fmtPct(sunnyPct), emphasis: sunnyPct > 40 ? 'good' : 'warn' },
       { label: 'Sườn khuất nắng (N/NE/NW)',   value: fmtPct(shadyPct), emphasis: shadyPct > 50 ? 'bad' : 'good' },
+      ...(geo ? [{ label: 'Địa phương', value: `${geo.province.replace('Tỉnh ', '').replace('TP. ', '').replace('Thủ đô ', '')} · ${geo.climateLabel}` }] : []),
     ],
     notes: [
-      `Vĩ độ ${env.latitude}°N — đặc trưng vùng ${env.latitude > 18 ? 'Bắc Trung Bộ trở ra' : 'Nam Trung Bộ trở vào'}.`,
+      ...climateNotes,
       `Trong ngày ${dayPhrase(env.month)}, vị trí mặt trời thay đổi từ Đông Nam (sáng) qua Nam (trưa) sang Tây Nam (chiều).`,
       sunnyPct > 0
         ? `${fmtPct(sunnyPct)} diện tích sườn phơi về Đông/Nam/Tây — nhận nắng tốt.`
@@ -457,11 +478,9 @@ export function buildSunSection(
 export function buildWindSection(
   env: EnvParams,
   aspectHist: ReturnType<typeof histogramAspect> | undefined,
+  geo?: GeoInfo | null,
 ): ReportSection {
-  // Hướng gió user nhập (env.windDirection: 0=Bắc, theo chiều kim đồng hồ)
-  const windDirVi = aspectName(env.windDirection);
-  // "Sườn đón gió" = aspect đối hướng với chiều gió đến (gió thổi về phía A => sườn phơi A đón gió thực ra là phía đối...)
-  // Trong app: windDirection = hướng gió ĐẾN từ. Gió từ NE thổi về SW. Sườn đón gió = sườn phơi NE.
+  // Hướng gió (env.windDirection: 0=Bắc, theo chiều kim đồng hồ)
   const windFromDir = aspectName(env.windDirection);
   const oppositeDir = aspectName((env.windDirection + 180) % 360);
 
@@ -479,21 +498,50 @@ export function buildWindSection(
   else if (exposedPct > 25) exposureLevel = 'trung bình — một số sườn đón gió';
   else exposureLevel = 'thấp — đa số khuất gió hoặc địa hình phẳng';
 
+  // Gió khí hậu địa phương
+  const climateNotes: string[] = [];
+  const climateMsgs: { label: string; value: string; emphasis?: 'good' | 'warn' | 'bad' }[] = [];
+
+  if (geo) {
+    const cWind    = getWindClimate(geo.climateZone, env.month);
+    const rainfall = getRainfallClimate(geo.climateZone);
+    const provinceName = geo.province.replace('Tỉnh ', '').replace('TP. ', '').replace('Thủ đô ', '');
+
+    climateNotes.push(
+      `Gió khí hậu T${env.month} tại ${provinceName} (${geo.climateLabel}): ${cWind.label} — ${cWind.dominantDirDeg}°, ~${cWind.avgSpeedMs} m/s.`,
+    );
+    climateNotes.push(
+      `Phân tích địa hình dùng hướng gió thực tế ${env.windDirection}° (${windFromDir}). ${Math.abs(env.windDirection - cWind.dominantDirDeg) < 20 ? '✓ Khớp với khí hậu địa phương.' : `⚠ Khác với khí hậu điển hình ${cWind.dominantDirDeg}° — kiểm tra nếu dùng gió thủ công.`}`,
+    );
+    climateNotes.push(
+      `Lượng mưa hàng năm: ${rainfall.annualMm} mm — ${rainfall.label}.`,
+    );
+    climateMsgs.push(
+      { label: 'Gió khí hậu T' + env.month, value: `${cWind.dominantDirDeg}° · ${cWind.avgSpeedMs} m/s` },
+      { label: 'Mô tả gió', value: cWind.label },
+    );
+  } else {
+    climateNotes.push('Chọn tỉnh/thành trong mục Vị trí để app tự điền hướng gió theo mùa chính xác cho địa phương.');
+  }
+
   return {
     id: 'wind',
     title: '8. Gió',
     icon: '💨',
-    summary: `Hướng gió ${windFromDir} (${env.windDirection}°). Mức phơi gió: ${exposureLevel}.`,
+    summary: geo
+      ? `${geo.province.replace('Tỉnh ', '').replace('TP. ', '').replace('Thủ đô ', '')} T${env.month}: ${getWindClimate(geo.climateZone, env.month).label}. Phơi gió địa hình: ${exposureLevel}.`
+      : `Hướng gió ${windFromDir} (${env.windDirection}°). Mức phơi gió: ${exposureLevel}.`,
     metrics: [
-      { label: 'Hướng gió',     value: `${windFromDir} (${env.windDirection}°)` },
-      { label: 'Sườn đón gió',  value: fmtPct(exposedPct),
-        emphasis: exposedPct > 40 ? 'warn' : 'good' },
-      { label: 'Sườn khuất gió',value: fmtPct(shelteredPct), emphasis: 'good' },
+      { label: 'Hướng gió phân tích', value: `${windFromDir} (${env.windDirection}°)` },
+      { label: 'Tốc độ gió',          value: `${env.windSpeed} m/s` },
+      ...climateMsgs,
+      { label: 'Sườn đón gió',  value: fmtPct(exposedPct),   emphasis: exposedPct > 40 ? 'warn' : 'good' },
+      { label: 'Sườn khuất gió', value: fmtPct(shelteredPct), emphasis: 'good' },
     ],
     notes: [
+      ...climateNotes,
       `Sườn phơi hướng ${windFromDir} đón gió trực diện — gió giật mạnh, nên tránh hệ cửa lớn không bảo vệ.`,
       `Sườn phơi hướng ${oppositeDir} khuất gió — vi khí hậu yên ổn, phù hợp sân vườn, mặt đứng chính của công trình.`,
-      `Khu vực miền núi phía Bắc thường có gió Đông Bắc mạnh vào mùa đông và gió Đông Nam mát vào mùa hè.`,
     ],
     recommendations: exposedPct > 40 ? [
       'Bố trí cây xanh/tường chắn gió ở mặt đón gió để giảm tải lực ngang.',
@@ -564,8 +612,13 @@ export function buildViewshedSection(
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { RoadsAnalysis } from '../analysis/roads';
+import type { OverlayLayer } from '../types';
+import { SURFACE_LABEL } from '../analysis/roadClassify';
 
-export function buildRoadsSection(roads: RoadsAnalysis | undefined): ReportSection {
+export function buildRoadsSection(
+  roads: RoadsAnalysis | undefined,
+  roadLayers?: OverlayLayer[],
+): ReportSection {
   if (!roads || roads.totalLengthM === 0) {
     return {
       id: 'roads',
@@ -574,8 +627,8 @@ export function buildRoadsSection(roads: RoadsAnalysis | undefined): ReportSecti
       summary: 'Không phát hiện layer giao thông trong dữ liệu.',
       metrics: [],
       notes: [
-        'Để phân tích giao thông, tải file DXF chứa layer có tên GIAOTHONG, GT, DUONG, ROAD... vào mục Lớp dữ liệu.',
-        'App sẽ tự nhận diện và phân tích chiều dài, độ dốc dọc, hệ số tiếp cận.',
+        'Giao thông được tự động phát hiện khi file CAD có layer tên GIAOTHONG, GT, DUONG, ROAD, STREET, MEP_DUONG, TIM_DUONG...',
+        'App sẽ phân loại mặt đường, ước tính chiều rộng và xác định lối vào chính.',
       ],
       empty: true,
       emptyMessage: 'Chưa có dữ liệu giao thông',
@@ -583,52 +636,140 @@ export function buildRoadsSection(roads: RoadsAnalysis | undefined): ReportSecti
   }
 
   const { totalLengthM, segments, accessibilityPct } = roads;
-
   const bullets: string[] = [];
-  bullets.push(`Tổng chiều dài hệ thống đường: ${(totalLengthM / 1000).toFixed(2)} km.`);
 
-  // Phân tích độ dốc dọc theo TCVN
+  // ── Tổng quan ──────────────────────────────────────────────────────────────
+  bullets.push(`Tổng chiều dài hệ thống đường: ${(totalLengthM / 1000).toFixed(2)} km (${segments.length} tuyến).`);
+
+  // ── Phân loại mặt đường từ roadMeta ────────────────────────────────────────
+  if (roadLayers && roadLayers.length > 0) {
+    // Gom theo surface
+    const surfaceGroups: Record<string, { count: number; totalLen: number; widths: number[] }> = {};
+    for (const layer of roadLayers) {
+      const meta = layer.roadMeta;
+      const surface = meta?.surface ?? 'unknown';
+      if (!surfaceGroups[surface]) surfaceGroups[surface] = { count: 0, totalLen: 0, widths: [] };
+      // Tính chiều dài layer
+      let layerLen = 0;
+      for (const poly of layer.polylines) {
+        for (let i = 1; i < poly.length; i++) {
+          const dx = poly[i].x - poly[i-1].x, dz = poly[i].z - poly[i-1].z;
+          layerLen += Math.sqrt(dx*dx + dz*dz);
+        }
+      }
+      surfaceGroups[surface].count++;
+      surfaceGroups[surface].totalLen += layerLen;
+      if (meta?.estimatedWidthM) surfaceGroups[surface].widths.push(meta.estimatedWidthM);
+    }
+    for (const [surface, info] of Object.entries(surfaceGroups)) {
+      const label = SURFACE_LABEL[surface as keyof typeof SURFACE_LABEL] ?? surface;
+      const lenStr = info.totalLen > 1000
+        ? `${(info.totalLen / 1000).toFixed(2)} km`
+        : `${Math.round(info.totalLen)} m`;
+      const widthStr = info.widths.length > 0
+        ? `, chiều rộng phổ biến ${Math.round(info.widths.reduce((a,b)=>a+b,0)/info.widths.length*10)/10} m`
+        : '';
+      bullets.push(`${label}: ${info.count} tuyến, tổng ${lenStr}${widthStr}.`);
+    }
+
+    // ── Lối vào chính ──────────────────────────────────────────────────────
+    let totalEntrances = 0;
+    const entranceLayers: string[] = [];
+    for (const layer of roadLayers) {
+      const eps = layer.roadMeta?.entrancePoints ?? [];
+      if (eps.length > 0) {
+        totalEntrances += eps.length;
+        entranceLayers.push(`${layer.name} (${eps.length} lối)`);
+      }
+    }
+    if (totalEntrances > 0) {
+      bullets.push(
+        `Phát hiện ${totalEntrances} lối vào/ra tại biên khu đất: ${entranceLayers.join(', ')}.`,
+      );
+    } else {
+      bullets.push('Chưa xác định được lối vào chính — đường chưa tiếp cận biên địa hình hoặc cần kiểm tra tên layer.');
+    }
+
+    // ── Chiều rộng và QCVN ─────────────────────────────────────────────────
+    const hasWidthData = roadLayers.some(l => l.roadMeta?.estimatedWidthM != null);
+    if (hasWidthData) {
+      const maxWidth = Math.max(...roadLayers.map(l => l.roadMeta?.estimatedWidthM ?? 0));
+      if (maxWidth >= 24) {
+        bullets.push(`Đường rộng nhất ${maxWidth} m — đủ tiêu chuẩn đường trục chính đô thị (QCVN 01:2021/BXD bảng 2.17 ≥ 24m).`);
+      } else if (maxWidth >= 12) {
+        bullets.push(`Đường rộng nhất ${maxWidth} m — đạt tiêu chuẩn đường khu vực (≥ 12m). Đường trục chính cần ≥ 24m.`);
+      } else if (maxWidth >= 6) {
+        bullets.push(`Đường rộng nhất ${maxWidth} m — mức đường nội bộ (≥ 6m). Cần xem xét mở rộng nếu có lưu lượng lớn.`);
+      } else {
+        bullets.push(`Đường rộng nhất ${maxWidth} m — nhỏ hơn yêu cầu tối thiểu đường đô thị 6m (QCVN 01:2021). Cần kiểm tra thiết kế.`);
+      }
+    } else {
+      bullets.push('Theo QCVN 01:2021/BXD bảng 2.17: đường trục chính ≥ 24m, khu vực ≥ 12m, nội bộ ≥ 6m. Nhập số chiều rộng vào tên layer (VD: DUONG_BT_6M) để app tự đo.');
+    }
+
+    // ── Role analysis ───────────────────────────────────────────────────────
+    const centerlines = roadLayers.filter(l => l.roadMeta?.role === 'centerline');
+    const edges = roadLayers.filter(l => l.roadMeta?.role === 'edge');
+    const rows = roadLayers.filter(l => l.roadMeta?.role === 'row');
+    const roleParts: string[] = [];
+    if (centerlines.length) roleParts.push(`${centerlines.length} tim đường`);
+    if (edges.length) roleParts.push(`${edges.length} mép đường`);
+    if (rows.length) roleParts.push(`${rows.length} lộ giới`);
+    if (roleParts.length > 0) {
+      bullets.push(`Phân vai: ${roleParts.join(', ')}.`);
+    }
+  }
+
+  // ── Độ dốc dọc ────────────────────────────────────────────────────────────
   const steepSegments = segments.filter(s => s.maxSlopePct > 8);
   if (steepSegments.length > 0) {
     bullets.push(
-      `${steepSegments.length} tuyến có độ dốc dọc max > 8% (giới hạn QCVN 04:2012 cho đường đô thị loại III–IV): ` +
-      steepSegments.map(s => `${s.name} (max ${s.maxSlopePct.toFixed(1)}%)`).join(', ') + '.'
+      `${steepSegments.length} tuyến dốc dọc max > 8% (giới hạn đường đô thị III–IV theo QCVN 04:2012): ` +
+      steepSegments.map(s => `${s.name} (max ${s.maxSlopePct.toFixed(1)}%)`).join(', ') + '.',
     );
   } else {
-    bullets.push('Tất cả tuyến đường có độ dốc dọc ≤ 8%, trong giới hạn thiết kế đường đô thị.');
+    bullets.push('Tất cả tuyến có độ dốc dọc ≤ 8%, phù hợp đường đô thị và giao thông nông thôn.');
   }
 
+  // ── Tiếp cận chu vi ───────────────────────────────────────────────────────
   if (accessibilityPct >= 80) {
-    bullets.push(`Hệ số tiếp cận ${accessibilityPct}% — rất tốt, đường bao phủ gần toàn bộ chu vi khu đất.`);
+    bullets.push(`Hệ số tiếp cận chu vi ${accessibilityPct}% — rất tốt, đường bao phủ hầu hết biên khu đất.`);
   } else if (accessibilityPct >= 50) {
-    bullets.push(`Hệ số tiếp cận ${accessibilityPct}% — đạt yêu cầu; một số cạnh khu đất chưa có đường tiếp cận trực tiếp.`);
+    bullets.push(`Hệ số tiếp cận chu vi ${accessibilityPct}% — đạt yêu cầu; một số cạnh chưa có đường kề.`);
   } else {
-    bullets.push(`Hệ số tiếp cận thấp (${accessibilityPct}%) — cần bổ sung đường/lối vào trên các cạnh chưa có tiếp cận.`);
+    bullets.push(`Hệ số tiếp cận chu vi thấp (${accessibilityPct}%) — cần bổ sung đường/lối vào cho các cạnh chưa tiếp cận.`);
   }
 
-  // Phân tích theo QCVN 01:2021/BXD bảng 2.17 — lộ giới (không có trong data, ghi chú hướng dẫn)
-  bullets.push('Theo QCVN 01:2021/BXD bảng 2.17: đường trục chính ≥ 24m, đường khu vực ≥ 12m, nội bộ ≥ 6m. Cần kiểm tra lộ giới thiết kế thực tế trên bản vẽ CAD.');
-
-  const metrics = [
+  const metrics: ReportMetric[] = [
     { label: 'Tổng chiều dài', value: `${(totalLengthM / 1000).toFixed(2)} km` },
     { label: 'Số tuyến', value: `${segments.length}` },
-    { label: 'Tiếp cận chu vi', value: `${accessibilityPct}%`, emphasis: (accessibilityPct >= 50 ? 'good' : 'warn') as 'good' | 'warn' | 'bad' },
+    { label: 'Tiếp cận chu vi', value: `${accessibilityPct}%`, emphasis: accessibilityPct >= 50 ? 'good' : 'warn' },
   ];
 
-  // Thêm tuyến có độ dốc max cao nhất
-  const maxSlopeSegment = segments.reduce((a, b) => a.maxSlopePct > b.maxSlopePct ? a : b);
-  metrics.push({ label: 'Dốc dọc max', value: `${maxSlopeSegment.maxSlopePct.toFixed(1)}%`, emphasis: maxSlopeSegment.maxSlopePct > 8 ? 'warn' : 'good' });
+  // Lối vào
+  const totalEP = (roadLayers ?? []).reduce((s, l) => s + (l.roadMeta?.entrancePoints.length ?? 0), 0);
+  metrics.push({ label: 'Lối vào', value: totalEP > 0 ? `${totalEP} điểm` : 'Chưa rõ', emphasis: totalEP > 0 ? 'good' : 'warn' });
+
+  // Dốc max
+  if (segments.length > 0) {
+    const maxSlopeSegment = segments.reduce((a, b) => a.maxSlopePct > b.maxSlopePct ? a : b);
+    metrics.push({
+      label: 'Dốc dọc max',
+      value: `${maxSlopeSegment.maxSlopePct.toFixed(1)}%`,
+      emphasis: maxSlopeSegment.maxSlopePct > 8 ? 'warn' : 'good',
+    });
+  }
 
   return {
     id: 'roads',
     title: '10. Giao thông & Tiếp cận',
     icon: '🛣️',
-    summary: `Phát hiện ${segments.length} tuyến đường, tổng ${(totalLengthM / 1000).toFixed(2)} km. Hệ số tiếp cận chu vi: ${accessibilityPct}%.`,
+    summary: `${segments.length} tuyến đường, tổng ${(totalLengthM / 1000).toFixed(2)} km. Tiếp cận chu vi ${accessibilityPct}%.${totalEP > 0 ? ` ${totalEP} lối vào phát hiện.` : ''}`,
     metrics,
     notes: bullets,
     recommendations: steepSegments.length > 0 ? [
       'Kiểm tra và điều chỉnh tuyến có dốc dọc > 8% trước khi lập dự án đầu tư.',
-      'Đảm bảo tầm nhìn dừng xe ≥ 40m trên đoạn dốc > 5% (theo TCVN 4054:2005).',
+      'Đảm bảo tầm nhìn dừng xe ≥ 40m trên đoạn dốc > 5% (TCVN 4054:2005).',
     ] : undefined,
   };
 }

@@ -8,6 +8,7 @@ import type { HydrologyData } from '../analysis/hydrology';
 import type { TerrainFeatures } from '../analysis/features';
 import type { SuitabilityData } from '../analysis/suitability';
 import type { ContourLineSegment } from '../analysis/contours';
+import type { GeoInfo } from '../coord/provinces';
 import { analyzeRoads } from '../analysis/roads';
 import { histogramAspect, terrainArea } from './stats';
 import {
@@ -36,10 +37,12 @@ export interface ReportInput {
   viewpoint?: { x: number; z: number; height: number } | null;
   /** Các overlay layer giao thông (isRoad = true) — để phân tích roads */
   roadLayers?: OverlayLayer[];
+  /** Thông tin địa lý đã xác định từ VN2000 — để cite vi khí hậu địa phương */
+  geo?: GeoInfo | null;
 }
 
 export function buildReport(input: ReportInput): Report {
-  const { heightmap: hm, env, slopeMode, slope, hydro, features, suitability, contours, viewshed, viewpoint, roadLayers } = input;
+  const { heightmap: hm, env, slopeMode, slope, hydro, features, suitability, contours, viewshed, viewpoint, roadLayers, geo } = input;
 
   // Pre-compute aspect histogram nếu có slope data
   const aspectHist = slope
@@ -53,10 +56,10 @@ export function buildReport(input: ReportInput): Report {
     buildFeaturesSection(hm, features),
     buildHydrologySection(hm, hydro),
     buildSuitabilitySection(hm, suitability),
-    buildSunSection(hm, env, aspectHist),
-    buildWindSection(env, aspectHist),
+    buildSunSection(hm, env, aspectHist, geo),
+    buildWindSection(env, aspectHist, geo),
     buildViewshedSection(hm, viewshed, viewpoint ?? null),
-    buildRoadsSection(roadLayers?.length ? analyzeRoads(roadLayers, hm) : undefined),
+    buildRoadsSection(roadLayers?.length ? analyzeRoads(roadLayers, hm) : undefined, roadLayers),
   ];
 
   return {

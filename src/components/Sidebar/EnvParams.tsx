@@ -1,7 +1,16 @@
-import { Grid3x3, Layers, MapPin, Route } from 'lucide-react';
+import { Grid3x3, Layers, MapPin, Route, Trees, Wind, RotateCcw } from 'lucide-react';
 import { useSiteStore } from '../../store/useSiteStore';
 import type { SlopeClassMode } from '../../lib/analysis/slope';
 import { PROVINCES } from '../../lib/coord/provinces';
+import { SURFACE_LABEL, SURFACE_COLOR, ROLE_LABEL } from '../../lib/analysis/roadClassify';
+import { getWindClimate, getRainfallClimate, climateZoneDescription } from '../../lib/analysis/climatology';
+import type { RoadSurface } from '../../lib/types';
+
+/** Quy đổi góc khí tượng (từ đó gió thổi tới) → tên hướng tiếng Việt */
+function dirLabel(deg: number): string {
+  const dirs = ['Bắc', 'ĐB', 'Đông', 'ĐN', 'Nam', 'TN', 'Tây', 'TB'];
+  return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+}
 
 export function EnvParams() {
   const env                  = useSiteStore((s) => s.env);
@@ -20,11 +29,24 @@ export function EnvParams() {
   const setGeoOverride       = useSiteStore((s) => s.setGeoOverride);
   const overlayLayers        = useSiteStore((s) => s.overlayLayers);
   const hasRoads             = overlayLayers.some(l => l.isRoad);
+  const hasTrees             = overlayLayers.some(l => l.isTree && (l.treePoints?.length ?? 0) > 0);
+  const roadLayers           = overlayLayers.filter(l => l.isRoad && l.visible);
 
   // Hiện style options khi đang ở mode contour HOẶC khi overlay bật
   const showContourStyle    = mode === 'contour' || showContourOverlay;
   // Hiện slider khoảng đều khi ở mode contour HOẶC khi overlay đang bật
   const showIntervalSlider  = mode === 'contour' || showContourOverlay;
+
+  // Khí hậu theo tỉnh đã phát hiện
+  const climateWind     = geo ? getWindClimate(geo.climateZone, env.month) : null;
+  const climateRainfall = geo ? getRainfallClimate(geo.climateZone) : null;
+  const climateDesc     = geo ? climateZoneDescription(geo.climateZone) : null;
+
+  // Kiểm tra xem gió hiện tại có đang khớp với khí hậu không
+  const windMatchesClimate = climateWind
+    ? Math.abs(env.windDirection - climateWind.dominantDirDeg) < 2 &&
+      Math.abs(env.windSpeed - climateWind.avgSpeedMs) < 0.15
+    : true;
 
   return (
     <div className="space-y-3">
@@ -88,6 +110,79 @@ export function EnvParams() {
         </div>
       )}
 
+      {/* ── Card vi khí hậu địa phương ── */}
+      {geo && climateWind && climateRainfall && (
+        <div className="rounded-md bg-bg-card border border-white/8 overflow-hidden">
+          {/* Header */}
+          <div className="px-2.5 py-1.5 border-b border-white/5 flex items-center gap-1.5">
+            <Wind size={11} className="text-sky-400 shrink-0" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-400 flex-1">
+              Vi khí hậu · {geo.province.replace('Tỉnh ', '').replace('TP. ', '').replace('Thủ đô ', '')}
+            </span>
+            {/* Nút reset gió về khí hậu địa phương nếu user đã chỉnh tay */}
+            {!windMatchesClimate && (
+              <button
+                onClick={() => setEnv({ windDirection: climateWind.dominantDirDeg, windSpeed: climateWind.avgSpeedMs })}
+                title={`Reset về gió khí hậu: ${climateWind.dominantDirDeg}° / ${climateWind.avgSpeedMs} m/s`}
+                className="flex items-center gap-1 text-[9px] text-amber-400/80 hover:text-amber-300 transition shrink-0"
+              >
+                <RotateCcw size={9} /> Reset gió
+              </button>
+            )}
+          </div>
+          {/* Climate data rows */}
+          <div className="px-2.5 py-1.5 space-y-1.5 text-[10px]">
+            {/* Vùng khí hậu */}
+            <div className="flex gap-1 text-slate-400">
+              <span className="text-slate-500 shrink-0 w-[76px]">Vùng KH:</span>
+              <span className="text-slate-300">{geo.climateLabel}</span>
+            </div>
+            <div className="flex gap-1 text-slate-400">
+              <span className="text-slate-500 shrink-0 w-[76px]">Đặc trưng:</span>
+              <span className="text-slate-400 leading-tight">{climateDesc}</span>
+            </div>
+
+            {/* Gió tháng hiện tại */}
+            <div className="pt-1 border-t border-white/5">
+              <div className="flex items-center gap-1">
+                {windMatchesClimate
+                  ? <span className="px-1 py-0.5 rounded text-[8px] bg-sky-500/20 text-sky-300 font-bold">AUTO ✓</span>
+                  : <span className="px-1 py-0.5 rounded text-[8px] bg-amber-500/20 text-amber-300 font-bold">THỦ CÔNG</span>
+                }
+                <span className="text-slate-300 font-semibold">
+                  Gió T{env.month}: {climateWind.label}
+                </span>
+              </div>
+              <div className="flex gap-3 mt-1 pl-0.5">
+                <span className="text-slate-400">
+                  Hướng: <span className="text-slate-200 font-mono">{climateWind.dominantDirDeg}°</span>
+                  <span className="text-slate-600"> ({dirLabel(climateWind.dominantDirDeg)})</span>
+                </span>
+                <span className="text-slate-400">
+                  Tốc độ: <span className="text-slate-200 font-mono">{climateWind.avgSpeedMs} m/s</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Mưa */}
+            <div className="pt-1 border-t border-white/5">
+              <div className="text-slate-300 font-semibold">Mưa hàng năm</div>
+              <div className="flex gap-3 mt-0.5">
+                <span className="text-slate-400">TB: <span className="text-slate-200 font-mono">{climateRainfall.annualMm} mm/năm</span></span>
+                <span className="text-slate-400">Đỉnh: <span className="text-slate-200">T{climateRainfall.peakMonth}</span></span>
+              </div>
+              <div className="text-slate-500 mt-0.5 leading-tight">{climateRainfall.label}</div>
+              {/* Chỉ báo tháng hiện tại có phải mùa khô không */}
+              {climateRainfall.dryMonths.includes(env.month) && (
+                <div className="mt-1 px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 text-[9px]">
+                  ☀️ Tháng {env.month} là mùa khô — hạn chế cây trồng, ưu tiên thoát nước tự nhiên
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toggle đường đồng mức overlay — luôn hiện khi có terrain ── */}
       {terrain && (
         <div className="pt-1 border-t border-white/5">
@@ -107,7 +202,7 @@ export function EnvParams() {
 
       {/* ── Toggle giao thông hiện trạng ── */}
       {terrain && hasRoads && (
-        <div className="pt-1">
+        <div className="pt-1 space-y-1.5">
           <button
             onClick={toggleRoads}
             className={`w-full flex items-center justify-center gap-2 py-2 rounded-md
@@ -119,6 +214,90 @@ export function EnvParams() {
             <Route size={13} />
             {showRoads ? 'Ẩn giao thông' : 'Hiện giao thông'}
           </button>
+
+          {/* Thông tin chi tiết từng layer đường */}
+          {showRoads && roadLayers.length > 0 && (
+            <div className="rounded-md bg-bg-card border border-white/5 overflow-hidden">
+              {/* Header */}
+              <div className="px-2 py-1 border-b border-white/5 text-[9px] uppercase tracking-wider text-slate-500 flex gap-2">
+                <span className="flex-1">Layer</span>
+                <span className="w-16 text-right">Mặt đường</span>
+                <span className="w-10 text-right">Rộng</span>
+              </div>
+              {/* Rows */}
+              {roadLayers.map(layer => {
+                const meta = layer.roadMeta;
+                const surface: RoadSurface = meta?.surface ?? 'unknown';
+                const entranceCount = meta?.entrancePoints.length ?? 0;
+                return (
+                  <div key={layer.id} className="px-2 py-1.5 border-b border-white/5 last:border-0">
+                    {/* Tên layer + vai trò */}
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span
+                        className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                        style={{ background: SURFACE_COLOR[surface] }}
+                      />
+                      <span className="text-[10px] text-slate-200 truncate flex-1" title={layer.name}>
+                        {layer.name}
+                      </span>
+                      {meta?.role && meta.role !== 'unknown' && (
+                        <span className="text-[9px] text-slate-500 flex-shrink-0">
+                          {ROLE_LABEL[meta.role]}
+                        </span>
+                      )}
+                    </div>
+                    {/* Surface + width + entrances */}
+                    <div className="flex items-center gap-2 pl-4">
+                      <span className="text-[10px] text-slate-400 flex-1">
+                        {SURFACE_LABEL[surface]}
+                      </span>
+                      {meta?.estimatedWidthM != null ? (
+                        <span className="text-[10px] font-mono text-accent-teal flex-shrink-0">
+                          {meta.estimatedWidthM}m
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-600 flex-shrink-0">—</span>
+                      )}
+                    </div>
+                    {/* Lối vào */}
+                    {entranceCount > 0 && (
+                      <div className="pl-4 mt-0.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
+                        <span className="text-[9px] text-orange-300">
+                          {entranceCount} lối vào chính
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Cây hiện trạng ── */}
+      {terrain && hasTrees && (
+        <div className="pt-1 space-y-2">
+          <button
+            onClick={() => setEnv({ showTrees: !env.showTrees })}
+            className={`w-full flex items-center justify-center gap-2 py-2 rounded-md
+                        text-xs font-bold uppercase tracking-wider border transition
+                        ${env.showTrees
+                          ? 'bg-green-500/15 border-green-500/50 text-green-300'
+                          : 'bg-bg-card border-white/10 text-slate-400 hover:border-green-500/30 hover:text-slate-200'}`}
+          >
+            <Trees size={13} />
+            {env.showTrees ? 'Ẩn cây hiện trạng' : 'Hiện cây hiện trạng'}
+          </button>
+          {env.showTrees && (
+            <Slider
+              label="Chiều cao cây"
+              value={env.treeHeight}
+              min={2} max={30} step={1} suffix="m"
+              onChange={(v) => setEnv({ treeHeight: v })}
+            />
+          )}
         </div>
       )}
 

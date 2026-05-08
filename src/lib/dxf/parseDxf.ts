@@ -1,6 +1,7 @@
 import DxfParser from 'dxf-parser';
-import type { ContourPolyline, ParsedDxf } from '../types';
+import type { ContourPolyline, ParsedDxf, RawRoadPolyline } from '../types';
 import { pickElevation } from './extractElevation';
+import { ROAD_LAYER_RE } from '../analysis/roads';
 
 interface DxfVertex {
   x: number;
@@ -63,12 +64,64 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   let minZ = Infinity, maxZ = -Infinity;
   let pointCount = 0;
 
+  // ── Collect layer colours from LAYER table (để gán màu cho road polylines) ─
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const layerColors: Record<string, string> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dxfAny = dxf as any;
+  if (dxfAny.tables?.layer?.layers) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const [name, info] of Object.entries(dxfAny.tables.layer.layers as Record<string, any>)) {
+      if (typeof info.trueColor === 'number' && info.trueColor > 0) {
+        layerColors[name] = '#' + (info.trueColor & 0xFFFFFF).toString(16).padStart(6, '0');
+      } else {
+        const ci = Math.abs(info.color ?? info.colorIndex ?? 0);
+        // ACI → hex đơn giản: ánh xạ một số màu phổ biến
+        const ACI_SIMPLE: Record<number, string> = {
+          1:'#FF0000', 2:'#FFFF00', 3:'#00FF00', 4:'#00FFFF',
+          5:'#0000FF', 6:'#FF00FF', 7:'#FFFFFF',
+        };
+        if (ci > 0) layerColors[name] = ACI_SIMPLE[ci] ?? '#AAAAAA';
+      }
+    }
+  }
+
+  // ── Road polylines raw (DXF 2D) ────────────────────────────────────────────
+  const rawRoadMap = new Map<string, { color: string; pts: { x: number; y: number }[][] }>();
+
+  function addRoadPolyline(layer: string, pts: { x: number; y: number }[]) {
+    if (pts.length < 2) return;
+    if (!rawRoadMap.has(layer)) {
+      rawRoadMap.set(layer, { color: layerColors[layer] ?? '#AAAAAA', pts: [] });
+    }
+    rawRoadMap.get(layer)!.pts.push(pts);
+  }
+
   for (const ent of dxf.entities) {
     const type = (ent.type || '').toUpperCase();
 
-    // Bỏ qua các entity không phải đường đồng mức
+    // Bỏ qua các entity không phải polyline/line
     if (type === 'TEXT' || type === 'MTEXT' || type === 'INSERT' || type === 'ATTDEF' ||
         type === 'DIMENSION' || type === 'HATCH' || type === 'SOLID') continue;
+
+    // ── Road detection: lấy polyline từ các layer giao thông TRƯỚC khi lọc contour
+    if (ent.layer && ROAD_LAYER_RE.test(ent.layer)) {
+      if ((type === 'POLYLINE' || type === 'LWPOLYLINE') && (ent.vertices ?? []).length >= 2) {
+        addRoadPolyline(
+          ent.layer,
+          (ent.vertices ?? [])
+            .filter((v: DxfVertex) => typeof v.x === 'number' && typeof v.y === 'number')
+            .map((v: DxfVertex) => ({ x: v.x, y: v.y })),
+        );
+      } else if (type === 'LINE' && ent.start && ent.end) {
+        addRoadPolyline(ent.layer, [
+          { x: ent.start.x, y: ent.start.y },
+          { x: ent.end.x,   y: ent.end.y   },
+        ]);
+      }
+      // Road layer không dùng cho contour → skip phần dưới
+      continue;
+    }
 
     // Nếu có layer matcher, chỉ chấp nhận layer match
     if (layerOk && !layerOk(ent.layer)) continue;
@@ -162,9 +215,18 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     throw new Error('Không tìm thấy đường đồng mức hợp lệ sau khi lọc. Kiểm tra layer/Z trong DXF.');
   }
 
+  // ── Build rawRoads từ rawRoadMap ─────────────────────────────────────────
+  const rawRoads: RawRoadPolyline[] = [];
+  for (const [layer, { color, pts }] of rawRoadMap.entries()) {
+    for (const points of pts) {
+      rawRoads.push({ layer, color, points });
+    }
+  }
+
   return {
     contours: filtered,
     bounds: { minX: realMinX, minY: realMinY, maxX: realMaxX, maxY: realMaxY, minZ: realMinZ, maxZ: realMaxZ },
     pointCount: realCount,
+    rawRoads: rawRoads.length > 0 ? rawRoads : undefined,
   };
 }

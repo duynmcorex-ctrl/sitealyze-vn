@@ -2,9 +2,13 @@ import { Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
 import { getTerrainApi } from '../../workers/terrainClient';
+import { groupToWorldSpace } from '../../lib/dxf/parseOverlayDxf';
+import { classifyRoadLayer, groupRawRoadsByLayer, SURFACE_COLOR } from '../../lib/analysis/roadClassify';
+import type { OverlayLayer } from '../../lib/types';
 
 export function FileUpload() {
   const setTerrain = useSiteStore((s) => s.setTerrain);
+  const addOverlayLayer = useSiteStore((s) => s.addOverlayLayer);
   const setLoading = useSiteStore((s) => s.setLoading);
   const setError = useSiteStore((s) => s.setError);
   const computeForMode = useSiteStore((s) => s.computeForMode);
@@ -30,6 +34,40 @@ export function FileUpload() {
         terrain = await api.processDxf(text, 384, layerPattern || undefined);
       }
       setTerrain(terrain);
+
+      // ── Auto-tạo road overlay layers từ rawRoadPolylines trong terrain ────
+      if (terrain.rawRoadPolylines && terrain.rawRoadPolylines.length > 0) {
+        const groups = groupRawRoadsByLayer(terrain.rawRoadPolylines);
+        const timestamp = Date.now();
+        for (const group of groups) {
+          const worldPolylines = groupToWorldSpace(
+            { layerName: group.layerName, color: group.color, polylines: group.polylines },
+            terrain.bounds,
+            terrain.heightmap,
+            1.5,  // offset 1.5m trên mặt đường
+          );
+          if (worldPolylines.length === 0) continue;
+
+          const roadMeta = classifyRoadLayer(group.layerName, group.polylines, terrain.bounds);
+          // Dùng màu theo surface type nếu phân loại được, giữ màu CAD nếu unknown
+          const displayColor = roadMeta.surface !== 'unknown'
+            ? SURFACE_COLOR[roadMeta.surface]
+            : group.color;
+
+          const layer: OverlayLayer = {
+            id: `road-${timestamp}-${group.layerName}`,
+            name: group.layerName,
+            color: displayColor,
+            originalColor: group.color,
+            visible: true,
+            isRoad: true,
+            roadMeta,
+            polylines: worldPolylines,
+          };
+          addOverlayLayer(layer);
+        }
+      }
+
       computeForMode(mode);
     } catch (err) {
       console.error(err);

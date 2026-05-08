@@ -13,12 +13,15 @@ import { OverlayLayerRenderer } from './OverlayLayerRenderer';
 import { RoadsRender } from './RoadsRender';
 import { AutoFit } from './AutoFit';
 import { CameraPreset } from './CameraPreset';
+import { TreeInstances } from './TreeInstances';
 import { useSiteStore } from '../../store/useSiteStore';
 
 export function Canvas3D() {
   const terrain         = useSiteStore((s) => s.terrain);
   const mode            = useSiteStore((s) => s.mode);
   const northRotation   = useSiteStore((s) => s.env.northRotation);
+  const showTrees       = useSiteStore((s) => s.env.showTrees);
+  const overlayLayers   = useSiteStore((s) => s.overlayLayers);
   const showContourOverlay = useSiteStore((s) => s.showContourOverlay);
   const showGrid        = useSiteStore((s) => s.showGrid);
   const projects        = useSiteStore((s) => s.projects);
@@ -44,6 +47,14 @@ export function Canvas3D() {
         return { id: p.id, terrain: p.terrain!, offset: [ox, 0, oz] as [number, number, number] };
       });
   }, [projects, activeProjectId]);
+
+  // Gom tất cả tree points từ các layer tree đang visible
+  const treesToRender = useMemo(
+    () => overlayLayers
+      .filter(l => l.isTree && l.visible && l.treePoints?.length)
+      .flatMap(l => l.treePoints!),
+    [overlayLayers],
+  );
 
   const gridConfig = useMemo(() => {
     if (!terrain) return { size: 2000, divisions: 40, y: 0 };
@@ -86,6 +97,10 @@ export function Canvas3D() {
             {mode === 'viewshed' && <ViewpointMarker />}
             <OverlayLayerRenderer />
             <RoadsRender />
+            {/* Cây hiện trạng — instanced, chỉ hiện khi toggle bật */}
+            {showTrees && treesToRender.length > 0 && (
+              <TreeInstances trees={treesToRender} />
+            )}
             {showGrid && (
               <gridHelper
                 args={[gridConfig.size, gridConfig.divisions, '#1f2937', '#1f2937']}

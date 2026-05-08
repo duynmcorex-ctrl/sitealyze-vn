@@ -15,6 +15,7 @@ import { buildReport } from '../lib/report/generateReport';
 import { detectVN2000Zone } from '../lib/coord/vn2000';
 import { findProvince, makeGeoFromProvinceName } from '../lib/coord/provinces';
 import type { GeoInfo } from '../lib/coord/provinces';
+import { getWindClimate } from '../lib/analysis/climatology';
 
 /** Snapshot của một dự án — lưu để switch qua lại */
 export interface StoredProject {
@@ -108,6 +109,19 @@ interface State {
   setCameraPreset: (v: string | null) => void;
 }
 
+/**
+ * Sinh envPatch từ GeoInfo + tháng: cập nhật lat, windDirection, windSpeed.
+ * Gọi khi geo thay đổi (detect/override) hoặc khi tháng thay đổi + geo đã có.
+ */
+function buildClimateEnvPatch(geo: GeoInfo, month: number): Partial<EnvParams> {
+  const wind = getWindClimate(geo.climateZone, month);
+  return {
+    latitude:      Math.round(geo.lat * 10) / 10,
+    windDirection: wind.dominantDirDeg,
+    windSpeed:     Math.round(wind.avgSpeedMs * 10) / 10,
+  };
+}
+
 const DEFAULT_ENV: EnvParams = {
   month: 3,
   hour: 12,
@@ -121,6 +135,8 @@ const DEFAULT_ENV: EnvParams = {
   contourSingleColor: '#ffffff',
   contourOpacity: 0.9,
   useOriginalContours: true, // mặc định: trung thực với CAD gốc
+  treeHeight: 8,             // chiều cao cây mặc định 8m
+  showTrees: true,
 };
 
 export const useSiteStore = create<State>((set, get) => ({
@@ -165,9 +181,11 @@ export const useSiteStore = create<State>((set, get) => ({
       if (zone) geo = findProvince(zone.lat, zone.lon);
     } catch { /* không crash nếu toạ độ không hợp lệ */ }
 
-    // Tự động cập nhật vĩ độ nếu phát hiện được tỉnh
-    const envPatch: Partial<EnvParams> = {};
-    if (geo) envPatch.latitude = Math.round(geo.lat * 10) / 10;
+    // Tự động cập nhật lat + gió khí hậu theo tỉnh & tháng hiện tại
+    const currentMonth = get().env.month;
+    const envPatch: Partial<EnvParams> = geo
+      ? buildClimateEnvPatch(geo, currentMonth)
+      : {};
 
     set((s) => {
       const newEnv = { ...s.env, ...envPatch };
@@ -220,7 +238,15 @@ export const useSiteStore = create<State>((set, get) => ({
     get().computeForMode(m);
   },
   setEnv: (patch) => {
-    set({ env: { ...get().env, ...patch } });
+    // Khi tháng thay đổi + đã có geo → tự động cập nhật hướng/tốc độ gió theo mùa
+    // (chỉ override nếu user KHÔNG đồng thời thay đổi windDirection/windSpeed thủ công)
+    const s = get();
+    let effectivePatch = patch;
+    if (patch.month !== undefined && patch.windDirection === undefined && patch.windSpeed === undefined && s.geo) {
+      const climatePatch = buildClimateEnvPatch(s.geo, patch.month);
+      effectivePatch = { ...patch, windDirection: climatePatch.windDirection, windSpeed: climatePatch.windSpeed };
+    }
+    set({ env: { ...s.env, ...effectivePatch } });
     const m = get().mode;
     if (m === 'contour' || m === 'hydrology' || m === 'suitability') {
       const a = get().analysis;
@@ -304,8 +330,10 @@ export const useSiteStore = create<State>((set, get) => ({
   setGeoOverride: (provinceName) => {
     const newGeo = provinceName ? makeGeoFromProvinceName(provinceName) : null;
     set((s) => {
-      const envPatch: Partial<EnvParams> = {};
-      if (newGeo) envPatch.latitude = Math.round(newGeo.lat * 10) / 10;
+      // Cập nhật lat + gió khí hậu theo tỉnh đã chọn + tháng hiện tại
+      const envPatch: Partial<EnvParams> = newGeo
+        ? buildClimateEnvPatch(newGeo, s.env.month)
+        : {};
       // Cập nhật cả active project trong projects[] (nếu có)
       const projects = s.projects.map(p =>
         p.id === s.activeProjectId
@@ -453,6 +481,7 @@ export const useSiteStore = create<State>((set, get) => ({
       viewshed: a.viewshed,
       viewpoint: get().viewpoint,
       roadLayers,
+      geo: get().geo,
     });
 
     set({ report, reportLoading: false, showReportPanel: true });

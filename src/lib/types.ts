@@ -11,6 +11,8 @@ export interface ParsedDxf {
   contours: ContourPolyline[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number; minZ: number; maxZ: number };
   pointCount: number;
+  /** Road polylines thô từ file CAD — tách riêng để worker pass qua TerrainData */
+  rawRoads?: RawRoadPolyline[];
 }
 
 export interface Heightmap {
@@ -57,6 +59,17 @@ export interface Report {
   sections: ReportSection[];
 }
 
+/**
+ * Một cây trong toạ độ Three.js world space (đã center + draped lên terrain).
+ * Dùng cho instanced rendering trong TreeInstances.tsx.
+ */
+export interface TreePoint {
+  x: number;          // Three.js X
+  y: number;          // Three.js Y = terrain height tại vị trí đó
+  z: number;          // Three.js Z
+  crownRadius: number; // Bán kính tán (m) — từ CIRCLE radius trong DXF hoặc default 3m
+}
+
 /** A vector overlay layer loaded from a separate DXF (ranh giới, giao thông, …) */
 export interface OverlayLayer {
   id: string;
@@ -66,6 +79,12 @@ export interface OverlayLayer {
   visible: boolean;
   /** Tự động tag là layer giao thông (regex GIAOTHONG, GT, DUONG …) */
   isRoad?: boolean;
+  /** Metadata phân tích đường — chỉ có khi isRoad = true */
+  roadMeta?: RoadMeta;
+  /** Tự động tag là layer cây hiện trạng (regex CAY, TREE …) */
+  isTree?: boolean;
+  /** Dữ liệu cây 3D — chỉ có khi isTree = true */
+  treePoints?: TreePoint[];
   /** Polylines in Three.js centered world space, ready to render */
   polylines: { x: number; y: number; z: number }[][];
 }
@@ -77,6 +96,40 @@ export interface TerrainData {
   meshNormals: Float32Array;
   contours: ContourPolyline[];
   bounds: ParsedDxf['bounds'];
+  /**
+   * Road polylines thô từ file CAD (tọa độ DXF 2D, chưa center/drape).
+   * Được tự động tạo khi parse DXF/DWG có layer giao thông.
+   * FileUpload.tsx dùng để tạo OverlayLayer với roadMeta sau khi build terrain.
+   */
+  rawRoadPolylines?: RawRoadPolyline[];
+}
+
+// ── Road classification ──────────────────────────────────────────────────────
+
+/** Loại mặt đường (từ tên layer hoặc màu) */
+export type RoadSurface = 'concrete' | 'asphalt' | 'gravel' | 'dirt' | 'unknown';
+
+/** Vai trò của polyline đường trong bản vẽ */
+export type RoadRole = 'centerline' | 'edge' | 'row' | 'unknown';
+
+/** Metadata phân tích giao thông — gắn vào OverlayLayer khi isRoad = true */
+export interface RoadMeta {
+  surface: RoadSurface;
+  role: RoadRole;
+  /** Chiều rộng ước tính (m) — từ tên layer hoặc đo cặp mep đường song song */
+  estimatedWidthM: number | null;
+  /** Điểm lối vào: endpoint của polyline gần biên địa hình, tọa độ Three.js XZ */
+  entrancePoints: { x: number; z: number }[];
+}
+
+/**
+ * Road polyline thô từ file CAD — tọa độ DXF 2D gốc (chưa center/drape).
+ * Lưu trong TerrainData để FileUpload tự động tạo OverlayLayer sau khi build terrain.
+ */
+export interface RawRoadPolyline {
+  layer: string;
+  color: string;    // CSS hex từ DXF layer table
+  points: { x: number; y: number }[];
 }
 
 export type AnalysisMode =
@@ -108,4 +161,8 @@ export interface EnvParams {
    * false → tự tính lại từ heightmap với contourInterval (cho phép đổi interval)
    */
   useOriginalContours: boolean;
+  /** Chiều cao cây hiện trạng (m) — điều chỉnh bằng slider */
+  treeHeight: number;
+  /** Hiển thị cây hiện trạng hay không */
+  showTrees: boolean;
 }

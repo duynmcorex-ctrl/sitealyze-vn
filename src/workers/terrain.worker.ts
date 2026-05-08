@@ -12,10 +12,10 @@ export interface TerrainWorkerAPI {
 }
 
 async function buildTerrain(
-  contours: import('../lib/types').ContourPolyline[],
-  bounds: import('../lib/types').ParsedDxf['bounds'],
+  parsed: import('../lib/types').ParsedDxf,
   gridResolution: number,
 ): Promise<TerrainData> {
+  const { contours, bounds, rawRoads } = parsed;
   const tin = buildTIN(contours);
   let heightmap = rasterizeTinToHeightmap(tin, bounds, gridResolution);
   heightmap = smoothHeightmap(heightmap, 2);
@@ -27,18 +27,19 @@ async function buildTerrain(
     meshNormals: mesh.normals,
     contours,
     bounds,
+    rawRoadPolylines: rawRoads,
   };
 }
 
 const api: TerrainWorkerAPI = {
   async processDxf(text, gridResolution = 384, layerPattern) {
     const parsed = parseDxfText(text, layerPattern);
-    return buildTerrain(parsed.contours, parsed.bounds, gridResolution);
+    return buildTerrain(parsed, gridResolution);
   },
 
   async processDwg(buffer, gridResolution = 384, layerPattern) {
     const parsed = await parseDwgBuffer(buffer, layerPattern);
-    return buildTerrain(parsed.contours, parsed.bounds, gridResolution);
+    return buildTerrain(parsed, gridResolution);
   },
 };
 

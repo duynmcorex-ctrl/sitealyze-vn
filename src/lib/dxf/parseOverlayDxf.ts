@@ -95,6 +95,14 @@ function tessArcBulge(
   return result;
 }
 
+// ── Tree layer detection ───────────────────────────────────────────────────────
+/** Layer name pattern: nhận dạng layer cây hiện trạng */
+const TREE_LAYER_RE = /(^|[_\-\s])(CAY|CX|TREE|TREET|VEGETATION|CAYXANH|CAY_HT|CAY_HH|GREEN|XANH)([_\-\s]|$)/i;
+
+export function isTreeLayer(layerName: string): boolean {
+  return TREE_LAYER_RE.test(layerName);
+}
+
 // ── Group types ────────────────────────────────────────────────────────────────
 
 export interface OverlayGroup {
@@ -102,15 +110,21 @@ export interface OverlayGroup {
   /** CSS hex colour from DXF layer/entity */
   color: string;
   polylines: { x: number; y: number }[][];
+  /**
+   * Circles trong layer (chỉ có khi layer được nhận dạng là tree layer).
+   * Lưu dạng thô trước khi convert world-space.
+   */
+  circles?: { x: number; y: number; r: number }[];
 }
 
 // ── Main parser ───────────────────────────────────────────────────────────────
 
 const SKIP_TYPES = new Set([
-  'TEXT', 'MTEXT', 'INSERT', 'ATTDEF', 'ATTRIB',
+  'TEXT', 'MTEXT', 'ATTDEF', 'ATTRIB',
   'DIMENSION', 'HATCH', 'SOLID', 'IMAGE',
   'POINT', 'XLINE', 'RAY', 'LEADER', 'TOLERANCE',
   'VIEWPORT', 'WIPEOUT',
+  // NOTE: INSERT giờ được xử lý riêng cho tree detection, không skip hoàn toàn
 ]);
 
 /** Parse overlay DXF → groups per CAD layer with original colours */
@@ -148,16 +162,34 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
   }
 
   // ── Accumulate polylines per CAD layer ────────────────────────────────────
-  const groups = new Map<string, { color: string; polys: { x: number; y: number }[][] }>();
+  const groups = new Map<string, {
+    color: string;
+    polys: { x: number; y: number }[][];
+    circles: { x: number; y: number; r: number }[];
+  }>();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function getGroup(layerName: string, color: string) {
-    if (!groups.has(layerName)) groups.set(layerName, { color, polys: [] });
+    if (!groups.has(layerName)) groups.set(layerName, { color, polys: [], circles: [] });
     return groups.get(layerName)!;
   }
 
   for (const ent of dxf.entities) {
     const type = (ent.type ?? '').toUpperCase();
+
+    // INSERT trên layer cây → đọc vị trí gốc như một điểm cây
+    if (type === 'INSERT') {
+      const layer = ent.layer ?? '0';
+      if (isTreeLayer(layer) && typeof ent.position?.x === 'number') {
+        const color = entityColor(ent, layer);
+        const g = getGroup(layer, color);
+        // Dùng xScale làm bán kính tán (nếu block được scale, mặc định 3m)
+        const r = Math.abs(ent.xScale ?? ent.yScale ?? 3);
+        g.circles.push({ x: ent.position.x, y: ent.position.y, r: r > 0.1 ? r : 3 });
+      }
+      continue;
+    }
+
     if (SKIP_TYPES.has(type)) continue;
 
     const layer = ent.layer ?? '0';
@@ -228,6 +260,11 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
 
     // ── CIRCLE ────────────────────────────────────────────────────────────
     } else if (type === 'CIRCLE' && ent.center && typeof ent.radius === 'number') {
+      // Nếu layer là tree → lưu circle data riêng (để render dạng 3D instanced tree)
+      // Vẫn tessellate polyline để hiển thị outline nếu user muốn
+      if (isTreeLayer(layer)) {
+        g.circles.push({ x: ent.center.x, y: ent.center.y, r: ent.radius });
+      }
       const pts = tessArc(ent.center.x, ent.center.y, ent.radius, 0, 360);
       pts.push({ ...pts[0] }); // close
       if (pts.length >= 2) g.polys.push(pts);
@@ -274,8 +311,13 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
   }
 
   return Array.from(groups.entries())
-    .filter(([, v]) => v.polys.length > 0)
-    .map(([layerName, { color, polys }]) => ({ layerName, color, polylines: polys }));
+    .filter(([, v]) => v.polys.length > 0 || v.circles.length > 0)
+    .map(([layerName, { color, polys, circles }]) => ({
+      layerName,
+      color,
+      polylines: polys,
+      ...(circles.length > 0 ? { circles } : {}),
+    }));
 }
 
 // ── Backward-compat flat interface ────────────────────────────────────────────
@@ -360,6 +402,25 @@ export function overlayToWorldSpace(
       z: -(p.y - cy),
     }));
   });
+}
+
+/**
+ * Convert raw DXF circles (tree crowns) → TreePoint[] trong Three.js world space.
+ * Drape lên terrain heightmap giống overlay polylines.
+ */
+export function circlesToTreePoints(
+  circles: { x: number; y: number; r: number }[],
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  hm: { width: number; height: number; cellSize: number; data: Float32Array },
+): import('../types').TreePoint[] {
+  const cx = (bounds.maxX + bounds.minX) / 2;
+  const cy = (bounds.maxY + bounds.minY) / 2;
+  return circles.map(({ x, y, r }) => ({
+    x: x - cx,
+    y: sampleHeight(x, y, bounds, hm),
+    z: -(y - cy),
+    crownRadius: r > 0.1 ? r : 3,  // bán kính tối thiểu 0.1m, mặc định 3m
+  }));
 }
 
 /**

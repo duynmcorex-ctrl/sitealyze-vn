@@ -4,6 +4,38 @@ import { Html } from '@react-three/drei';
 import { useSiteStore } from '../../store/useSiteStore';
 import { ELEV_PALETTE_HEX, elevPaletteIndex } from '../../lib/analysis/elevationPalette';
 import { originalContoursToSegments } from '../../lib/analysis/contours';
+import type { Heightmap } from '../../lib/types';
+
+/**
+ * Sample heightmap height tại vị trí Three.js world (wx, wz).
+ * Chuyển ngược: world → DXF coords → grid index → bilinear interp.
+ * Trả về `fallback` nếu điểm nằm ngoài grid.
+ */
+function sampleHM(
+  wx: number, wz: number,
+  bounds: { minX: number; minY: number; maxX: number; maxY: number },
+  hm: Heightmap,
+  fallback: number,
+): number {
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  // Three.js world → DXF: X = wx + cx, Y = cy - wz (flip Z)
+  const dxfX = wx + cx;
+  const dxfY = cy - wz;
+  const fx = (dxfX - hm.origin.x) / hm.cellSize;
+  const fy = (dxfY - hm.origin.y) / hm.cellSize;
+  // Clamp vào [0, width-2] / [0, height-2] để c1/r1 không vượt biên
+  const c0 = Math.max(0, Math.min(hm.width  - 2, Math.floor(fx)));
+  const r0 = Math.max(0, Math.min(hm.height - 2, Math.floor(fy)));
+  const c1 = c0 + 1, r1 = r0 + 1;
+  const tx = fx - c0, ty = fy - r0;
+  const h =
+    hm.data[r0 * hm.width + c0] * (1 - tx) * (1 - ty) +
+    hm.data[r0 * hm.width + c1] *       tx  * (1 - ty) +
+    hm.data[r1 * hm.width + c0] * (1 - tx) *       ty  +
+    hm.data[r1 * hm.width + c1] *       tx  *       ty;
+  return Number.isFinite(h) ? h : fallback;
+}
 
 export function ContourLines() {
   const terrain  = useSiteStore((s) => s.terrain);
@@ -31,8 +63,9 @@ export function ContourLines() {
     if (!segments || segments.length === 0) return { geometry: null, labelPoints: [] };
 
     const hm       = terrain.heightmap;
-    // Offset = 1% của tổng relief (tối thiểu 1m) để tránh Z-fighting sau smooth heightmap
-    const zOffset  = Math.max(1.0, (hm.maxZ - hm.minZ) * 0.01);
+    // Offset nhỏ để tránh Z-fighting: 0.5% relief nhưng tối thiểu 0.3m, tối đa 2m
+    const relief   = hm.maxZ - hm.minZ;
+    const zOffset  = Math.min(2.0, Math.max(0.3, relief * 0.005));
     const positions: number[] = [];
     const colors: number[]    = [];
     const sc = new THREE.Color(singleColor);
@@ -52,15 +85,20 @@ export function ContourLines() {
 
       for (const path of seg.paths) {
         for (let i = 0; i < path.length - 1; i++) {
-          positions.push(path[i].x,   seg.elevation + zOffset, path[i].y);
-          positions.push(path[i+1].x, seg.elevation + zOffset, path[i+1].y);
+          // ── Dùng chiều cao thực từ heightmap thay vì elevation cố định ──
+          // → đường đồng mức bám sát mặt terrain mesh, không nổi trên không khí
+          const y0 = sampleHM(path[i].x,   path[i].y,   terrain.bounds, hm, seg.elevation) + zOffset;
+          const y1 = sampleHM(path[i+1].x, path[i+1].y, terrain.bounds, hm, seg.elevation) + zOffset;
+          positions.push(path[i].x,   y0, path[i].y);
+          positions.push(path[i+1].x, y1, path[i+1].y);
           colors.push(r, g, b, r, g, b);
         }
         // Điểm ngoài cùng bên phải (+X lớn nhất) → đặt nhãn
         for (const pt of path) {
           const prev = labelMap.get(seg.elevation);
           if (!prev || pt.x > prev.x) {
-            labelMap.set(seg.elevation, { x: pt.x, y: seg.elevation + zOffset + 1.0, z: pt.y });
+            const labelY = sampleHM(pt.x, pt.y, terrain.bounds, hm, seg.elevation) + zOffset + 1.0;
+            labelMap.set(seg.elevation, { x: pt.x, y: labelY, z: pt.y });
           }
         }
       }
@@ -80,7 +118,7 @@ export function ContourLines() {
 
     return { geometry: g, labelPoints };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrain, analysis.contours, colorMode, singleColor, useOriginal, terrain?.heightmap.minZ, terrain?.heightmap.maxZ]);
+  }, [terrain, analysis.contours, colorMode, singleColor, useOriginal, terrain?.heightmap.minZ, terrain?.heightmap.maxZ, terrain?.bounds]);
 
   if (!geometry) return null;
 

@@ -1,9 +1,10 @@
-import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route } from 'lucide-react';
+import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route, Trees } from 'lucide-react';
 import { useRef } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
-import { parseOverlayDxfGroups, groupToWorldSpace } from '../../lib/dxf/parseOverlayDxf';
+import { parseOverlayDxfGroups, groupToWorldSpace, isTreeLayer, circlesToTreePoints } from '../../lib/dxf/parseOverlayDxf';
 import { saveProject, loadProject } from '../../lib/project/saveLoad';
 import { isRoadLayer } from '../../lib/analysis/roads';
+import { SURFACE_LABEL, SURFACE_COLOR } from '../../lib/analysis/roadClassify';
 import type { OverlayLayer } from '../../lib/types';
 
 export function LayerPanel() {
@@ -35,7 +36,15 @@ export function LayerPanel() {
 
     for (const group of groups) {
       const worldPolylines = groupToWorldSpace(group, terrain.bounds, terrain.heightmap);
-      if (worldPolylines.length === 0) continue;
+
+      // Detect tree + convert circles
+      const treeDetected = isTreeLayer(group.layerName) && (group.circles?.length ?? 0) > 0;
+      const treePoints = treeDetected
+        ? circlesToTreePoints(group.circles!, terrain.bounds, terrain.heightmap)
+        : undefined;
+
+      // Bỏ qua nếu không có polylines VÀ không có tree points
+      if (worldPolylines.length === 0 && !treePoints?.length) continue;
 
       // Tên layer: "tên-file / tên-CAD-layer" (hoặc chỉ tên file nếu layer là "0" duy nhất)
       const displayName =
@@ -46,10 +55,12 @@ export function LayerPanel() {
       const layer: OverlayLayer = {
         id: `layer-${timestamp}-${group.layerName}`,
         name: displayName,
-        color: group.color,           // màu gốc từ DXF
-        originalColor: group.color,   // lưu để reset
+        color: group.color,
+        originalColor: group.color,
         visible: true,
-        isRoad: isRoadLayer(group.layerName), // auto-tag giao thông
+        isRoad: isRoadLayer(group.layerName),
+        isTree: treeDetected,
+        treePoints,
         polylines: worldPolylines,
       };
       addOverlayLayer(layer);
@@ -174,9 +185,32 @@ function LayerRow({
       )}
 
       {/* Road badge */}
-      {layer.isRoad && (
-        <span title="Layer giao thông — hiển thị qua nút 'Giao thông'">
-          <Route size={10} className="text-yellow-400 flex-shrink-0" />
+      {layer.isRoad && (() => {
+        const meta = layer.roadMeta;
+        const surface = meta?.surface ?? 'unknown';
+        const surfaceColor = SURFACE_COLOR[surface as keyof typeof SURFACE_COLOR] ?? '#AAAAAA';
+        const surfaceLabel = surface !== 'unknown'
+          ? SURFACE_LABEL[surface as keyof typeof SURFACE_LABEL]
+          : 'Đường';
+        const widthStr = meta?.estimatedWidthM ? ` ${meta.estimatedWidthM}m` : '';
+        const entStr = (meta?.entrancePoints?.length ?? 0) > 0
+          ? ` · ${meta!.entrancePoints.length} lối vào` : '';
+        const tooltip = `${surfaceLabel}${widthStr}${entStr} — hiển thị qua nút Giao thông`;
+        return (
+          <span
+            className="flex items-center gap-0.5 px-1 rounded text-[9px] font-bold flex-shrink-0"
+            style={{ background: surfaceColor + '33', color: surfaceColor, border: `1px solid ${surfaceColor}55` }}
+            title={tooltip}
+          >
+            <Route size={9} />
+            {surface !== 'unknown' && <span>{surfaceLabel.split(' ')[0]}</span>}
+          </span>
+        );
+      })()}
+      {/* Tree badge */}
+      {layer.isTree && (
+        <span title={`Cây hiện trạng — ${layer.treePoints?.length ?? 0} cây`}>
+          <Trees size={10} className="text-green-400 flex-shrink-0" />
         </span>
       )}
 
