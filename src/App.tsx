@@ -6,14 +6,17 @@ import { Legend } from './components/Legend/Legend';
 import { Compass } from './components/Scene/Compass';
 import { ReportPanel, ReportTrigger } from './components/Report/ReportPanel';
 import { ViewButtons } from './components/Scene/ViewButtons';
+import { BasemapPanel } from './components/Map/BasemapPanel';
 import { useSiteStore } from './store/useSiteStore';
 
 export default function App() {
-  const loading = useSiteStore((s) => s.loading);
-  const error = useSiteStore((s) => s.error);
-  const terrain = useSiteStore((s) => s.terrain);
+  const loading     = useSiteStore((s) => s.loading);
+  const error       = useSiteStore((s) => s.error);
+  const terrain     = useSiteStore((s) => s.terrain);
   const toggleTheme = useSiteStore((s) => s.toggleTheme);
-  const theme = useSiteStore((s) => s.theme);
+  const theme       = useSiteStore((s) => s.theme);
+  const showBasemap = useSiteStore((s) => s.showBasemap);
+  const toggleBasemap = useSiteStore((s) => s.toggleBasemap);
 
   // Đồng bộ store với class html đã được anti-flash script áp dụng
   useEffect(() => {
@@ -34,16 +37,26 @@ export default function App() {
     <div className="h-full w-full flex flex-col bg-bg-base text-slate-100">
       <Header />
       <div className="flex-1 flex relative overflow-hidden">
-        <main className="flex-1 relative">
-          <Canvas3D />
-          {!terrain && !loading && <DropHint />}
-          {loading && <LoadingOverlay />}
-          {error && <ErrorBanner message={error} />}
-          <Legend />
-          <Compass />
-          <ViewButtons />
-          <ReportPanel />
-          <ReportTrigger />
+        <main className="flex-1 relative flex flex-col overflow-hidden">
+          {/* ── 3D Scene (luôn mount để giữ state camera, ẩn khi xem basemap) ── */}
+          <div className={`${showBasemap ? 'hidden' : 'flex-1'} relative`}>
+            <Canvas3D />
+            {!terrain && !loading && <DropHint />}
+            {loading && <LoadingOverlay />}
+            {error && <ErrorBanner message={error} />}
+            <Legend />
+            <Compass />
+            <ViewButtons />
+            <ReportPanel />
+            <ReportTrigger />
+          </div>
+
+          {/* ── Basemap panel 2D (ESRI + OSM) ── */}
+          {showBasemap && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <BasemapPanel onClose={toggleBasemap} />
+            </div>
+          )}
         </main>
         <Sidebar />
       </div>

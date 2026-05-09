@@ -26,9 +26,19 @@ export interface RoadsAnalysis {
   accessibilityPct: number;
 }
 
-/** Regex auto-detect tên layer giao thông */
+/**
+ * Regex auto-detect tên layer giao thông.
+ *
+ * QUAN TRỌNG: Cần loại trừ các pattern dễ nhầm:
+ *   - DUONG_DONG_MUC, DUONG-DONG-MUC = đường ĐỒNG MỨC (contour) — KHÔNG phải đường giao thông
+ *   - BINH_DO, BINH-DO = bình đồ (terrain) — không phải đường
+ *   - DM, DC, DG = layer code đường đồng mức
+ *
+ * Dùng negative lookahead `DUONG(?![-_ ]?(DONG|MUC|BINH|DO|DM|DC|DG))` để
+ * không match "DUONG_DONG_MUC", "DUONG_DONG", "DUONG_MUC", v.v.
+ */
 export const ROAD_LAYER_RE =
-  /(GIAOTHONG|GIAO[-_]?THONG|GT|DUONG|D[-_]?T|LO[-_]?GIOI|MEPDUONG|MEP[-_]?DUONG|TIMDUONG|TIM[-_]?DUONG|VIA[-_]?HE|VIAHE|ROAD|STREET|LANE|TRAFFIC|TRANSPORT)/i;
+  /(GIAOTHONG|GIAO[-_ ]?THONG|^GT$|^GT[-_ ]|[-_ ]GT[-_ ]|[-_ ]GT$|DUONG(?![-_ ]?(DONG|MUC|BINH|DO|DM|DC|DG))|D[-_]T|LO[-_ ]?GIOI|MEPDUONG|MEP[-_ ]?DUONG|TIMDUONG|TIM[-_ ]?DUONG|VIA[-_ ]?HE|VIAHE|ROAD(?![-_ ]?ELEV)|STREET|LANE|TRAFFIC|TRANSPORT)/i;
 
 /** Trả về true nếu tên layer thuộc giao thông */
 export function isRoadLayer(layerName: string): boolean {

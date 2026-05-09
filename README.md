@@ -2,6 +2,9 @@
 
 Web app phân tích bản đồ địa hình DXF: dựng mesh 3D, đánh giá độ dốc, đường đồng mức, điểm đặc trưng, đất xây dựng, thủy văn, nắng, gió, tầm nhìn.
 
+> 📋 **[CHANGELOG_VN.md](./CHANGELOG_VN.md)** — nhật ký từng phiên bản
+> 📖 **[HUONG_DAN.md](./HUONG_DAN.md)** — hướng dẫn so sánh phiên bản (không cần git/CLI)
+
 ## Yêu cầu
 
 - **Node.js ≥ 18** ([tải tại nodejs.org](https://nodejs.org/))

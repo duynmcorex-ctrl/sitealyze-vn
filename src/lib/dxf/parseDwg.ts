@@ -110,8 +110,10 @@ export async function parseDwgBuffer(
     const type: string = ent?.type ?? '';
     const layer: string = ent?.layer ?? '';
 
-    // ── Road detection: trước khi lọc contour ──────────────────────────────
-    if (layer && ROAD_LAYER_RE.test(layer)) {
+    // ── Road detection: CHỈ chạy nếu layer KHÔNG phải contour layer ────────
+    // Defense-in-depth: ưu tiên contour nếu match cả 2 pattern.
+    const isContourLayer = layer && DEFAULT_CONTOUR_LAYER_RE.test(layer);
+    if (!isContourLayer && layer && ROAD_LAYER_RE.test(layer)) {
       if (type === 'LWPOLYLINE') {
         const verts: { x?: number; y?: number }[] = ent.vertices ?? [];
         const pts = verts

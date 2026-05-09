@@ -2,6 +2,7 @@ import { useSiteStore } from '../../store/useSiteStore';
 import { getSlopeClasses } from '../../lib/analysis/slope';
 import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
 import { buildElevationLegendItems } from '../../lib/analysis/elevationPalette';
+import { RoadsLegend } from '../Scene/RoadsRender';
 
 export function Legend() {
   const mode    = useSiteStore((s) => s.mode);
@@ -11,7 +12,12 @@ export function Legend() {
   const slopeMode = useSiteStore((s) => s.slopeMode);
   const showAllPeaks = useSiteStore((s) => s.showAllPeakElevations);
   const toggleAllPeaks = useSiteStore((s) => s.toggleAllPeakElevations);
+  const report = useSiteStore((s) => s.report);
+  const toggleReportPanel = useSiteStore((s) => s.toggleReportPanel);
   if (!terrain || hide) return null;
+
+  // Section nhận xét tương ứng với mode đang chọn (đã build trong setMode)
+  const section = report?.sections.find((s) => s.id === mode);
 
   let content: React.ReactNode = null;
   let title = '';
@@ -130,12 +136,81 @@ export function Legend() {
         ]} />
       );
       break;
+    case 'roads':
+      title = 'Giao thông hiện trạng';
+      content = <RoadsLegend />;
+      break;
   }
 
   return (
-    <div className="absolute bottom-4 left-4 panel rounded-lg p-3 min-w-[220px] max-w-xs">
+    <div className="absolute bottom-4 left-4 panel rounded-lg p-3 min-w-[240px] max-w-sm max-h-[70vh] overflow-y-auto">
       <div className="text-[11px] font-bold uppercase tracking-wider text-accent-teal mb-2">{title}</div>
       {content}
+
+      {/* ── Inline comments: notes + recommendations từ report section ── */}
+      {section && (section.notes.length > 0 || (section.recommendations?.length ?? 0) > 0) && (
+        <div className="mt-3 pt-2.5 border-t border-white/10 space-y-2">
+          {/* Summary (nếu có) */}
+          {section.summary && (
+            <div className="text-[10px] text-slate-300 leading-snug italic">
+              {section.icon && <span className="mr-1">{section.icon}</span>}
+              {section.summary}
+            </div>
+          )}
+
+          {/* Metrics đã có sẵn ở section.metrics — hiện 2-3 cái nổi bật */}
+          {section.metrics.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {section.metrics.slice(0, 4).map((m, i) => (
+                <span
+                  key={i}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                    m.emphasis === 'good' ? 'bg-emerald-500/10 border-emerald-400/40 text-emerald-300' :
+                    m.emphasis === 'warn' ? 'bg-amber-500/10 border-amber-400/40 text-amber-300' :
+                    m.emphasis === 'bad'  ? 'bg-red-500/10 border-red-400/40 text-red-300' :
+                                            'bg-bg-card border-white/10 text-slate-300'
+                  }`}
+                  title={m.label}
+                >
+                  <span className="text-slate-500 font-normal">{m.label}: </span>
+                  {m.value}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Notes (bullet) */}
+          {section.notes.length > 0 && (
+            <ul className="space-y-1 text-[10px] text-slate-300 leading-snug list-disc pl-3.5">
+              {section.notes.slice(0, 5).map((note, i) => (
+                <li key={i}>{note}</li>
+              ))}
+            </ul>
+          )}
+
+          {/* Recommendations (highlight box) */}
+          {(section.recommendations?.length ?? 0) > 0 && (
+            <div className="px-2 py-1.5 rounded bg-accent-teal/10 border border-accent-teal/30">
+              <div className="text-[9px] uppercase tracking-wider text-accent-teal font-bold mb-1">
+                💡 Khuyến nghị
+              </div>
+              <ul className="space-y-0.5 text-[10px] text-slate-200 leading-snug list-disc pl-3">
+                {section.recommendations!.slice(0, 3).map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Link mở full report */}
+          <button
+            onClick={toggleReportPanel}
+            className="w-full text-[9px] uppercase tracking-wider text-slate-500 hover:text-accent-teal transition py-0.5"
+          >
+            Xem báo cáo đầy đủ →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

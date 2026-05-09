@@ -141,7 +141,8 @@ export type AnalysisMode =
   | 'hydrology'
   | 'sun'
   | 'wind'
-  | 'viewshed';
+  | 'viewshed'
+  | 'roads';
 
 export interface EnvParams {
   month: number;

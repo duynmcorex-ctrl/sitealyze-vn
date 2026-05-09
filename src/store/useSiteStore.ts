@@ -68,6 +68,10 @@ interface State {
   /** Override tỉnh thủ công (khi auto-detect VN2000 fail) */
   setGeoOverride: (provinceName: string | null) => void;
 
+  /** Hiện/ẩn panel bản đồ 2D (ESRI + OSM) */
+  showBasemap: boolean;
+  toggleBasemap: () => void;
+
   /** Giao diện: 'dark' (mặc định) hoặc 'light' */
   theme: 'dark' | 'light';
   toggleTheme: () => void;
@@ -104,7 +108,8 @@ interface State {
   renameOverlayLayer: (id: string, name: string) => void;
   setOverlayLayers: (layers: OverlayLayer[]) => void;
   toggleReportPanel: () => void;
-  generateReport: () => void;
+  /** Build report. Mặc định cũng mở panel; truyền `false` để chỉ build (cho Legend inline) */
+  generateReport: (openPanel?: boolean) => void;
   toggleAllPeakElevations: () => void;
   setCameraPreset: (v: string | null) => void;
 }
@@ -160,6 +165,7 @@ export const useSiteStore = create<State>((set, get) => ({
   cameraPreset: null,
   geo: null,
   showRoads: true,
+  showBasemap: false,
   theme: 'dark',
   projects: [],
   activeProjectId: null,
@@ -236,6 +242,11 @@ export const useSiteStore = create<State>((set, get) => ({
   setMode: (m) => {
     set({ mode: m });
     get().computeForMode(m);
+    // Auto-build report (silent) để Legend hiện nhận xét inline cho mode đang chọn.
+    // Không tự mở panel — user phải nhấn "Báo cáo" để mở full.
+    if (get().terrain) {
+      try { get().generateReport(false); } catch { /* ignore */ }
+    }
   },
   setEnv: (patch) => {
     // Khi tháng thay đổi + đã có geo → tự động cập nhật hướng/tốc độ gió theo mùa
@@ -317,6 +328,7 @@ export const useSiteStore = create<State>((set, get) => ({
   setOverlayLayers: (layers) => set({ overlayLayers: layers }),
 
   toggleRoads: () => set((s) => ({ showRoads: !s.showRoads })),
+  toggleBasemap: () => set((s) => ({ showBasemap: !s.showBasemap })),
 
   toggleTheme: () => {
     const next = get().theme === 'dark' ? 'light' : 'dark';
@@ -439,7 +451,7 @@ export const useSiteStore = create<State>((set, get) => ({
       projects: s.projects.map(p => p.id === id ? { ...p, visible: !p.visible } : p),
     })),
 
-  generateReport: () => {
+  generateReport: (openPanel = true) => {
     const t = get().terrain;
     if (!t) return;
     set({ reportLoading: true });
@@ -484,7 +496,7 @@ export const useSiteStore = create<State>((set, get) => ({
       geo: get().geo,
     });
 
-    set({ report, reportLoading: false, showReportPanel: true });
+    set({ report, reportLoading: false, ...(openPanel ? { showReportPanel: true } : {}) });
   },
 
   computeForMode: (m) => {
@@ -524,6 +536,10 @@ export const useSiteStore = create<State>((set, get) => ({
         ensureSlope();
         ensureHydro();
         if (!a.suitability) a.suitability = computeSuitability(t.heightmap, a.slope!, a.hydro!);
+        break;
+      case 'roads':
+        // Roads data đã có sẵn trong overlayLayers, chỉ cần auto-bật showRoads
+        if (!get().showRoads) set({ showRoads: true });
         break;
       default:
         break;

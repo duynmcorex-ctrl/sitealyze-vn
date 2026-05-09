@@ -33,8 +33,12 @@ export function WindParticles() {
     const hm = terrain.heightmap;
     const w = hm.width * hm.cellSize;
     const h = hm.height * hm.cellSize;
-    // northRotation áp dụng ở group cha; giữ wind ở local space
-    const rad = (env.windDirection + 180) * Math.PI / 180;
+    // env.windDirection theo compass thực (0=Bắc thực).
+    // Group cha rotate -northRotation° quanh Y, nên để velocity hiển thị
+    // đúng hướng compass thật sau rotation, phải quy đổi về local space:
+    //   local angle = world angle - (-northRotation) = world angle + northRotation
+    // Cộng 180° vì windDirection là "hướng gió đến TỪ", còn velocity là hướng đi TỚI.
+    const rad = (env.windDirection + 180 - env.northRotation) * Math.PI / 180;
     const baseSpeed = env.windSpeed * 30;
     const dx = Math.sin(rad) * baseSpeed;
     const dz = -Math.cos(rad) * baseSpeed;

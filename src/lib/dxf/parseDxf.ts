@@ -104,8 +104,12 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     if (type === 'TEXT' || type === 'MTEXT' || type === 'INSERT' || type === 'ATTDEF' ||
         type === 'DIMENSION' || type === 'HATCH' || type === 'SOLID') continue;
 
-    // ── Road detection: lấy polyline từ các layer giao thông TRƯỚC khi lọc contour
-    if (ent.layer && ROAD_LAYER_RE.test(ent.layer)) {
+    // ── Road detection — CHỈ chạy nếu layer KHÔNG phải contour layer ──────────
+    // Defense-in-depth: kể cả regex ROAD_LAYER_RE có lỡ match nhầm
+    // (vd: "DUONG_XXX_DONG_MUC"), entity vẫn được ưu tiên xử lý như contour
+    // nếu layer match contour pattern.
+    const isContourLayer = ent.layer && DEFAULT_CONTOUR_LAYER_RE.test(ent.layer);
+    if (!isContourLayer && ent.layer && ROAD_LAYER_RE.test(ent.layer)) {
       if ((type === 'POLYLINE' || type === 'LWPOLYLINE') && (ent.vertices ?? []).length >= 2) {
         addRoadPolyline(
           ent.layer,

@@ -18,7 +18,8 @@ async function buildTerrain(
   const { contours, bounds, rawRoads } = parsed;
   const tin = buildTIN(contours);
   let heightmap = rasterizeTinToHeightmap(tin, bounds, gridResolution);
-  heightmap = smoothHeightmap(heightmap, 2);
+  // Tăng từ 2 → 6 passes Gaussian để xóa facet TIN ở vùng dốc nhẹ
+  heightmap = smoothHeightmap(heightmap, 6);
   const mesh = buildMeshFromHeightmap(heightmap);
   return {
     heightmap,

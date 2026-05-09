@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+// Đọc version từ package.json để inject vào app
+const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')) as { version: string };
 
 /**
  * Plugin copy WASM của libredwg-web vào public/ để Vite serve đúng đường dẫn.
@@ -25,6 +28,10 @@ function copyLibreDwgWasm() {
 
 export default defineConfig({
   plugins: [react(), copyLibreDwgWasm()],
+  // Inject version từ package.json vào build (header app hiện badge)
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   worker: {
     format: 'es',
   },
