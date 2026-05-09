@@ -1,5 +1,5 @@
-import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route, Trees } from 'lucide-react';
-import { useRef } from 'react';
+import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route, Trees, ChevronDown, ChevronRight, Folder } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
 import { parseOverlayDxfGroups, groupToWorldSpace, isTreeLayer, circlesToTreePoints } from '../../lib/dxf/parseOverlayDxf';
 import { saveProject, loadProject } from '../../lib/project/saveLoad';
@@ -54,7 +54,9 @@ export function LayerPanel() {
 
       const layer: OverlayLayer = {
         id: `layer-${timestamp}-${group.layerName}`,
-        name: displayName,
+        fileId: `file-${timestamp}`,
+        fileName: baseName,
+        name: group.layerName === '0' && groups.length === 1 ? baseName : group.layerName,
         color: group.color,
         originalColor: group.color,
         visible: true,
@@ -80,19 +82,50 @@ export function LayerPanel() {
     computeForMode(mode);
   };
 
+  // Nhóm layers theo fileId (Google Earth tree)
+  const fileGroups = (() => {
+    const map = new Map<string, OverlayLayer[]>();
+    for (const l of overlayLayers) {
+      const key = l.fileId ?? 'ungrouped';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(l);
+    }
+    return Array.from(map.entries());
+  })();
+
+  const handleDeleteFile = (fileId: string) => {
+    const ids = overlayLayers.filter(l => (l.fileId ?? 'ungrouped') === fileId).map(l => l.id);
+    ids.forEach(id => removeOverlayLayer(id));
+  };
+
+  const handleToggleFile = (fileId: string) => {
+    const layers = overlayLayers.filter(l => (l.fileId ?? 'ungrouped') === fileId);
+    const allVisible = layers.every(l => l.visible);
+    layers.forEach(l => { if (l.visible === allVisible) toggleOverlayLayerVisible(l.id); });
+  };
+
+  const handleColorFile = (fileId: string, color: string) => {
+    const layers = overlayLayers.filter(l => (l.fileId ?? 'ungrouped') === fileId);
+    layers.forEach(l => updateOverlayLayerColor(l.id, color));
+  };
+
   return (
     <div className="space-y-3">
-      {/* Danh sách overlay layers */}
-      {overlayLayers.length > 0 && (
-        <div className="space-y-1.5">
-          {overlayLayers.map((layer) => (
-            <LayerRow
-              key={layer.id}
-              layer={layer}
-              onToggle={() => toggleOverlayLayerVisible(layer.id)}
-              onDelete={() => removeOverlayLayer(layer.id)}
-              onColorChange={(c) => updateOverlayLayerColor(layer.id, c)}
-              onRename={(n) => renameOverlayLayer(layer.id, n)}
+      {/* Cây layer kiểu Google Earth */}
+      {fileGroups.length > 0 && (
+        <div className="space-y-1">
+          {fileGroups.map(([fileId, layers]) => (
+            <FileGroup
+              key={fileId}
+              fileId={fileId}
+              layers={layers}
+              onToggleFile={() => handleToggleFile(fileId)}
+              onDeleteFile={() => handleDeleteFile(fileId)}
+              onColorFile={(c) => handleColorFile(fileId, c)}
+              onToggleLayer={(id) => toggleOverlayLayerVisible(id)}
+              onDeleteLayer={(id) => removeOverlayLayer(id)}
+              onColorLayer={(id, c) => updateOverlayLayerColor(id, c)}
+              onRenameLayer={(id, n) => renameOverlayLayer(id, n)}
             />
           ))}
         </div>
@@ -140,6 +173,121 @@ export function LayerPanel() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLoadProject(f); e.target.value = ''; }}
         />
       </div>
+    </div>
+  );
+}
+
+// ── File group (folder) ──────────────────────────────────────────────────────
+
+function FileGroup({
+  fileId, layers,
+  onToggleFile, onDeleteFile, onColorFile,
+  onToggleLayer, onDeleteLayer, onColorLayer, onRenameLayer,
+}: {
+  fileId: string;
+  layers: OverlayLayer[];
+  onToggleFile: () => void;
+  onDeleteFile: () => void;
+  onColorFile: (c: string) => void;
+  onToggleLayer: (id: string) => void;
+  onDeleteLayer: (id: string) => void;
+  onColorLayer: (id: string, c: string) => void;
+  onRenameLayer: (id: string, n: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const isMultiLayer = layers.length > 1;
+  const allVisible = layers.every(l => l.visible);
+  const someVisible = layers.some(l => l.visible);
+  const fileName = layers[0]?.fileName ?? layers[0]?.name ?? fileId;
+
+  // Màu đại diện folder: lấy màu layer đầu tiên
+  const folderColor = layers[0]?.color ?? '#888';
+
+  if (!isMultiLayer) {
+    // File chỉ có 1 layer → hiện flat row (không cần folder)
+    return (
+      <LayerRow
+        layer={layers[0]}
+        onToggle={() => onToggleLayer(layers[0].id)}
+        onDelete={() => onDeleteLayer(layers[0].id)}
+        onColorChange={(c) => onColorLayer(layers[0].id, c)}
+        onRename={(n) => onRenameLayer(layers[0].id, n)}
+      />
+    );
+  }
+
+  return (
+    <div className="rounded border border-white/10 overflow-hidden">
+      {/* Folder header */}
+      <div className="flex items-center gap-1 px-2 py-1.5 bg-white/5 hover:bg-white/8 transition">
+        {/* Expand toggle */}
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="text-slate-500 hover:text-slate-300 flex-shrink-0"
+        >
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+
+        {/* Folder icon */}
+        <Folder size={12} className="text-accent-teal/70 flex-shrink-0" />
+
+        {/* Folder color (tất cả layer con) */}
+        <label className="cursor-pointer flex-shrink-0 relative" title="Đổi màu tất cả layer">
+          <span
+            className="block w-3.5 h-3.5 rounded-sm border border-white/20"
+            style={{ background: folderColor }}
+          />
+          <input
+            type="color" value={folderColor}
+            onChange={(e) => onColorFile(e.target.value)}
+            className="w-0 h-0 opacity-0 absolute"
+          />
+        </label>
+
+        {/* Tên file */}
+        <span className="flex-1 min-w-0 truncate text-xs text-slate-200 font-medium" title={fileName}>
+          {fileName}
+        </span>
+
+        {/* Badge số layer */}
+        <span className="text-[9px] text-slate-500 flex-shrink-0 mr-1">
+          {layers.length} layers
+        </span>
+
+        {/* Toggle tất cả */}
+        <button
+          onClick={onToggleFile}
+          title={allVisible ? 'Tắt tất cả' : 'Bật tất cả'}
+          className="text-slate-500 hover:text-slate-300 transition flex-shrink-0"
+        >
+          {(allVisible || someVisible) ? <Eye size={13} /> : <EyeOff size={13} />}
+        </button>
+
+        {/* Xoá tất cả */}
+        <button
+          onClick={onDeleteFile}
+          title="Xoá tất cả layer trong file này"
+          className="text-slate-600 hover:text-red-400 transition flex-shrink-0"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+
+      {/* Layer con */}
+      {expanded && (
+        <div className="pl-5 border-t border-white/5 space-y-px">
+          {layers.map(layer => (
+            <LayerRow
+              key={layer.id}
+              layer={layer}
+              onToggle={() => onToggleLayer(layer.id)}
+              onDelete={() => onDeleteLayer(layer.id)}
+              onColorChange={(c) => onColorLayer(layer.id, c)}
+              onRename={(n) => onRenameLayer(layer.id, n)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -13,18 +13,26 @@ mở từng phiên bản như mở folder Word.
    scripts\build-all-versions.bat
    ```
 3. Đợi build xong (script tự build từng phiên bản, mỗi cái ~30-60 giây)
-4. Khi xong, sẽ có folder mới: `..\SiteAlyze-Versions\`
+4. Khi xong, Windows Explorer **tự mở folder** chứa các phiên bản
+
+**Folder lưu các phiên bản nằm ở:**
+```
+D:\CV lam chinh thuc\OneDrive\0. Myself\9- AI\SiteAlyze-Versions\
+```
+(Cùng thư mục `9- AI\` với folder code, nhưng **NẰM NGOÀI** folder repo)
 
 Cấu trúc folder sau khi build:
 ```
-SiteAlyze-Versions/                  ← folder mới, NẰM NGOÀI repo
-├── 📂 v0.1.0-phase1/                ← phiên bản đầu tiên
-│   ├── index.html
-│   ├── assets/
-│   └── ▶️ MỞ APP.bat                ← double-click để chạy
-├── 📂 v0.2.0-roads/
-├── 📂 v0.4.0-stable/                ← phiên bản hiện tại
-└── ▶️ serve-all.bat                 ← chạy 4 phiên bản song song
+9- AI\
+├── 📂 Buld web hien trang\          ← code nguồn (đang làm việc tại đây)
+└── 📂 SiteAlyze-Versions\           ← CÁC PHIÊN BẢN ĐÃ BUILD ← MỞ Ở ĐÂY
+    ├── 📂 v0.1.0-phase1\            ← phiên bản đầu tiên
+    │   ├── index.html
+    │   ├── assets/
+    │   └── ▶️ MỞ APP.bat            ← double-click để chạy
+    ├── 📂 v0.2.0-roads\
+    ├── 📂 v0.4.0-stable\            ← phiên bản hiện tại
+    └── ▶️ serve-all.bat             ← chạy nhiều phiên bản song song
 ```
 
 ---

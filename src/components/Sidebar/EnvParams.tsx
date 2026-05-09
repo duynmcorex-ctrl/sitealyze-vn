@@ -89,7 +89,7 @@ export function EnvParams() {
             </div>
           ) : (
             <div className="text-[10px] text-amber-400/80 px-1 leading-tight">
-              ⚠ Không nhận dạng được toạ độ VN-2000 (file CAD đã re-center về 0,0).
+              ⚠ Chưa xác định được tỉnh từ toạ độ file CAD.
               Chọn tỉnh bên dưới để app dùng đúng vĩ độ + khí hậu địa phương.
             </div>
           )}

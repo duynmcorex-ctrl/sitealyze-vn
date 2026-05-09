@@ -1,6 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { Html } from '@react-three/drei';
+import * as THREE from 'three';
 import { useSiteStore } from '../../store/useSiteStore';
+import { traceRidgePolylines } from '../../lib/analysis/features';
 
 // ── Google-Maps style pin ─────────────────────────────────────────────────────
 function PeakPin({
@@ -58,7 +60,7 @@ function PeakPin({
             padding: '5px 12px',
             marginBottom: 6,
             color: pinFinal,
-            fontSize: 15,
+            fontSize: 18,
             fontWeight: 800,
             fontFamily: '"Courier New", monospace',
             whiteSpace: 'nowrap',
@@ -117,6 +119,28 @@ function PitMarker({ x, y, z, scale }: { x: number; y: number; z: number; scale:
   );
 }
 
+// ── Đường sống núi từ ridge mask ─────────────────────────────────────────────
+function RidgeLines({ polylines }: { polylines: { x: number; y: number; z: number }[][] }) {
+  const segments = useMemo(() => {
+    const geoms: THREE.BufferGeometry[] = [];
+    for (const pl of polylines) {
+      if (pl.length < 2) continue;
+      const pts = pl.map((p) => new THREE.Vector3(p.x, p.y + 0.5, p.z));
+      const geom = new THREE.BufferGeometry().setFromPoints(pts);
+      geoms.push(geom);
+    }
+    return geoms;
+  }, [polylines]);
+
+  return (
+    <group>
+      {segments.map((geom, i) => (
+        <primitive key={i} object={new THREE.Line(geom, new THREE.LineBasicMaterial({ color: '#fb923c', opacity: 0.75, transparent: true }))} />
+      ))}
+    </group>
+  );
+}
+
 // ── Component chính ───────────────────────────────────────────────────────────
 export function FeatureMarkers() {
   const analysis      = useSiteStore((s) => s.analysis);
@@ -130,7 +154,7 @@ export function FeatureMarkers() {
   const scale = hm ? Math.max(hm.cellSize * 1.5, 5) : 6;
 
   // Sắp xếp peaks theo cao độ giảm dần để đánh rank
-  const { peaks, pits } = analysis.features;
+  const { peaks, pits, ridges } = analysis.features;
   const rankedPeaks = peaks
     .map((p, i) => ({ ...p, origIdx: i }))
     .sort((a, b) => b.y - a.y)
@@ -138,8 +162,18 @@ export function FeatureMarkers() {
     // Sắp lại theo origIdx để selectedIdx khớp
     .sort((a, b) => a.origIdx - b.origIdx);
 
+  // Tracing ridge polylines — chỉ khi có heightmap
+  const ridgePolylines = useMemo(
+    () => hm ? traceRidgePolylines(ridges, hm) : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hm, ridges],
+  );
+
   return (
     <group>
+      {/* Đường sống núi */}
+      <RidgeLines polylines={ridgePolylines} />
+
       {rankedPeaks.map((p) => (
         <PeakPin
           key={`peak-${p.origIdx}`}

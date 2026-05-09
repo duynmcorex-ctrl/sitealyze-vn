@@ -52,3 +52,66 @@ export function detectFeatures(hm: Heightmap, radius = 3): TerrainFeatures {
 
   return { peaks, pits, ridges, valleys };
 }
+
+/**
+ * Chuyển mask ridge/valley thành các polyline liên tục.
+ * Thuật toán: scan từng pixel có mask=1, nối 8-neighbors liên tiếp thành chain.
+ * Trả về mảng các polyline 3D (tọa độ Three.js world space).
+ */
+export function traceRidgePolylines(
+  mask: number[],
+  hm: Heightmap,
+  minLength = 4,
+): { x: number; y: number; z: number }[][] {
+  const { width: w, height: h, cellSize, data } = hm;
+  const cx = (w * cellSize) / 2;
+  const cy = (h * cellSize) / 2;
+
+  const visited = new Uint8Array(w * h);
+  const polylines: { x: number; y: number; z: number }[][] = [];
+
+  // Hướng 8 lân cận theo thứ tự ưu tiên ngang/đứng trước, chéo sau
+  const DIRS = [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+  ];
+
+  for (let sy = 1; sy < h - 1; sy++) {
+    for (let sx = 1; sx < w - 1; sx++) {
+      const si = sy * w + sx;
+      if (!mask[si] || visited[si]) continue;
+
+      // Bắt đầu 1 chain từ điểm này
+      const chain: { x: number; y: number; z: number }[] = [];
+      let cx2 = sx, cy2 = sy;
+
+      while (true) {
+        const i = cy2 * w + cx2;
+        visited[i] = 1;
+        chain.push({
+          x: cx2 * cellSize - cx,
+          y: data[i],
+          z: -(cy2 * cellSize - cy),
+        });
+
+        // Tìm neighbor chưa thăm có mask=1
+        let found = false;
+        for (const [dx, dy] of DIRS) {
+          const nx = cx2 + dx, ny = cy2 + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const ni = ny * w + nx;
+          if (mask[ni] && !visited[ni]) {
+            cx2 = nx; cy2 = ny;
+            found = true;
+            break;
+          }
+        }
+        if (!found) break;
+      }
+
+      if (chain.length >= minLength) polylines.push(chain);
+    }
+  }
+
+  return polylines;
+}

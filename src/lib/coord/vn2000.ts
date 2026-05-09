@@ -103,8 +103,8 @@ export function vn2000ToLatLon(
   };
 }
 
-/** Bbox của Việt Nam (đất liền) — dùng để xác thực zone đoán */
-const VN_BBOX = { minLat: 8.0, maxLat: 23.5, minLon: 102.0, maxLon: 110.0 };
+/** Bbox của Việt Nam (mở rộng 0.5° mỗi chiều để không bỏ sót biên giới) */
+const VN_BBOX = { minLat: 7.5, maxLat: 24.0, minLon: 101.5, maxLon: 110.5 };
 
 /** Các kinh tuyến trục VN-2000 phổ biến nhất (6° và 3° zones) */
 const CANDIDATE_MERIDIANS: { meridian: number; k0: number; label: string }[] = [
@@ -132,12 +132,28 @@ export interface DetectedZone {
 /**
  * Đoán kinh tuyến trục VN-2000 từ một điểm (E, N) — thử nhiều ứng viên,
  * chọn cái cho lat/lon nằm trong bbox Việt Nam và Easting gần 500k nhất.
+ *
+ * Hỗ trợ thêm:
+ *  - Easting có tiền tố zone (> 1 000 000): tự bỏ tiền tố (vd 18500000 → 500000)
+ *  - Toạ độ cực nhỏ (re-centered về gốc 0,0): trả null
  */
 export function detectVN2000Zone(easting: number, northing: number): DetectedZone | null {
+  // Bỏ qua file re-center về 0,0
+  if (Math.abs(easting) < 1000 && Math.abs(northing) < 1000) return null;
+
+  // Xử lý easting có tiền tố zone (vd 18500000, 19500000 → lấy 6 chữ số cuối)
+  let e = easting;
+  if (e > 1_000_000) {
+    // Thử bỏ tiền tố: giữ lại phần sau khi chia cho 10^n sao cho 100000 < e < 900000
+    let tmp = e;
+    while (tmp > 900_000) tmp = tmp % 1_000_000;
+    if (tmp > 100_000 && tmp < 900_000) e = tmp;
+  }
+
   const candidates: DetectedZone[] = [];
 
   for (const c of CANDIDATE_MERIDIANS) {
-    const { lat, lon } = vn2000ToLatLon(easting, northing, {
+    const { lat, lon } = vn2000ToLatLon(e, northing, {
       centralMeridian: c.meridian,
       k0: c.k0,
     });
@@ -147,7 +163,7 @@ export function detectVN2000Zone(easting: number, northing: number): DetectedZon
     if (!inVN) continue;
 
     // Confidence: càng gần 500k easting + càng gần kinh tuyến trục lon càng tốt
-    const easCenter = 1 - Math.min(1, Math.abs(easting - 500000) / 200000);
+    const easCenter = 1 - Math.min(1, Math.abs(e - 500000) / 200000);
     const lonCenter = 1 - Math.min(1, Math.abs(lon - c.meridian) / 1.5);
     const confidence = (easCenter * 0.4 + lonCenter * 0.6);
 

@@ -73,6 +73,10 @@ export interface TreePoint {
 /** A vector overlay layer loaded from a separate DXF (ranh giới, giao thông, …) */
 export interface OverlayLayer {
   id: string;
+  /** ID nhóm — tất cả layer từ cùng 1 file có cùng fileId (dạng "file-<timestamp>") */
+  fileId?: string;
+  /** Tên file gốc (không có extension) — hiện trong folder group header */
+  fileName?: string;
   name: string;
   color: string;           // CSS hex, hiện tại (có thể bị ghi đè)
   originalColor?: string;  // màu gốc từ file CAD (để reset)
