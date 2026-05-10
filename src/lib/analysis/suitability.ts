@@ -61,26 +61,33 @@ export function computeSuitability(
   if (maxAccumLog === 0) maxAccumLog = 1;
 
   for (let i = 0; i < n; i++) {
-    let s = 0;
+    const sl = slope.slopeDeg[i];
 
-    // Độ dốc (0–40 điểm) — nội suy tuyến tính, không nhảy bậc
-    s += slopeScore(slope.slopeDeg[i]);
+    // VETO: dốc > 25° → đất không xây được kể cả các yếu tố khác (hướng/cao độ) tốt
+    if (sl > 25) { score[i] = 0; continue; }
 
-    // Thủy văn (0–30 điểm, nghịch chiều)
+    // Slope factor 0..1 — nội suy tuyến tính, dùng làm hệ số nhân (multiplicative)
+    // sl<=5°: factor=1; sl=15°: factor≈0.5; sl=25°: factor=0
+    const slopeFactor = slopeScore(sl) / 40;
+
+    // Thủy văn (0–30 điểm, nghịch chiều) — vùng tích nước cao = lụt
     const accumNorm = Math.log10(1 + hydro.flowAccum[i]) / maxAccumLog;
-    s += (1 - accumNorm) * 30;
+    const hydroPts = (1 - accumNorm) * 30;
 
-    // Hướng phơi đông/nam (45–225°) — gradient 7→15 quanh ngưỡng ±15° để tránh vệt
+    // Hướng phơi đông/nam (45–225°) — gradient 7→15 quanh ngưỡng ±15°
     const asp = slope.aspectDeg[i];
     const inFav = (asp >= 45 && asp <= 225);
     const nearBound = (asp >= 30 && asp < 45) || (asp > 225 && asp <= 240);
-    s += inFav ? 15 : nearBound ? 11 : 7;
+    const aspectPts = inFav ? 15 : nearBound ? 11 : 7;
 
     // Tránh đáy quá thấp — gradient thay vì bậc nhảy 0.1
     const zNorm = (hm.data[i] - hm.minZ) / Math.max(1e-6, hm.maxZ - hm.minZ);
-    s += zNorm < 0.05 ? 0 : zNorm < 0.15 ? (zNorm - 0.05) / 0.10 * 15 : 15;
+    const zPts = zNorm < 0.05 ? 0 : zNorm < 0.15 ? (zNorm - 0.05) / 0.10 * 15 : 15;
 
-    score[i] = s;
+    // Multiplicative: slope là hệ số nhân lên điểm slope (0-40) + bonus khác
+    // → slope dốc => slopeFactor nhỏ => tổng score nhỏ, kể cả bonus khác cao
+    const otherBonuses = hydroPts + aspectPts + zPts;
+    score[i] = slopeFactor * 40 + slopeFactor * otherBonuses;
   }
 
   // Làm mịn score 3 passes để xóa vệt còn lại từ accumulation flow

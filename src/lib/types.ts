@@ -136,6 +136,72 @@ export interface RawRoadPolyline {
   points: { x: number; y: number }[];
 }
 
+// ── Land use planning (parse từ bản vẽ QH chi tiết) ─────────────────────────
+
+/** 18 loại đất theo CHÚ THÍCH KÝ HIỆU chuẩn QH VN */
+export type LanduseType =
+  | 'TRUNG_TAM_VHTT'    // Trung tâm văn hoá - thể thao
+  | 'NHA_VAN_HOA'       // Đất nhà văn hoá
+  | 'TMDV'              // Đất thương mại dịch vụ
+  | 'TRUONG_MAM_NON'    // Trường mầm non
+  | 'TRUONG_TIEU_HOC'   // Trường tiểu học
+  | 'NHA_O_LIEN_KE'     // Đất nhà ở liên kế
+  | 'BIET_THU_DON_LAP'  // Đất nhà ở biệt thự đơn lập
+  | 'BIET_THU_SONG_LAP' // Đất nhà ở biệt thự song lập
+  | 'NHA_O_XA_HOI'      // Đất nhà ở xã hội
+  | 'CHUNG_CU_HON_HOP'  // Đất nhà chung cư hỗn hợp
+  | 'CAY_XANH_CONG_CONG'// Đất cây xanh sử dụng công cộng
+  | 'CAY_XANH_THE_DUC'  // Đất cây xanh thể dục thể thao
+  | 'HA_TANG_KY_THUAT'  // Đất hạ tầng kỹ thuật
+  | 'BAI_DO_XE'         // Đất bãi đỗ xe
+  | 'HO_AO_DAM'         // Mặt nước (hồ, ao, đầm)
+  | 'DUONG_GIAO_THONG'  // Đường giao thông
+  | 'KHOANG_LUI'        // Khoảng lùi
+  | 'CAU_BE_TONG'       // Cầu bê tông
+  | 'KHAC';             // Loại khác / chưa phân loại
+
+export interface LanduseParcel {
+  id: string;
+  /** Polygon đa giác (toạ độ DXF gốc, chưa center) */
+  polygon: { x: number; y: number }[];
+  /** Loại đất suy luận từ màu/layer */
+  inferredType: LanduseType;
+  /** Màu CSS hex từ entity DXF */
+  rawColor: string;
+  /** Tên layer DXF nguồn */
+  layer: string;
+  /** Diện tích tính được từ polygon (m²) — Shoelace */
+  areaSqm: number;
+  /** Indicator (ô chỉ tiêu) gắn với parcel này, nếu match được */
+  indicator?: ParcelIndicator;
+}
+
+export interface ParcelIndicator {
+  /** Toạ độ tâm vòng tròn chỉ tiêu (toạ độ DXF gốc) */
+  center: { x: number; y: number };
+  /** A — ký hiệu chức năng ô đất (vd "DTMDV-01", "BT-12") */
+  code: string;
+  /** B — diện tích ô đất (m²), null nếu chưa biết */
+  area: number | null;
+  /** C — mật độ XD tối đa (%), null nếu chưa biết */
+  maxDensity: number | null;
+  /** D — tầng cao tối đa */
+  maxFloors: number | null;
+  /** E — hệ số sử dụng đất (FAR) */
+  far: number | null;
+  /** G — dân số (người) */
+  population: number | null;
+}
+
+export interface LanduseData {
+  parcels: LanduseParcel[];
+  indicators: ParcelIndicator[];
+  /** Tổng diện tích cộng lại (m²) */
+  totalAreaSqm: number;
+  /** Phân bố diện tích theo loại đất */
+  byType: { type: LanduseType; areaSqm: number; pct: number; count: number }[];
+}
+
 export type AnalysisMode =
   | 'elevation'
   | 'slope'
@@ -146,7 +212,8 @@ export type AnalysisMode =
   | 'sun'
   | 'wind'
   | 'viewshed'
-  | 'roads';
+  | 'roads'
+  | 'landuse';
 
 export interface EnvParams {
   month: number;

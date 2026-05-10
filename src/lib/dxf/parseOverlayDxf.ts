@@ -29,14 +29,14 @@ const ACI: Record<number, string> = {
   250: '#333333', 251: '#505050', 252: '#696969', 253: '#828282', 254: '#BEBEBE', 255: '#F0F0F0',
 };
 
-function aciToHex(n: number): string {
+export function aciToHex(n: number): string {
   if (ACI[n]) return ACI[n];
   // Fallback: hue wheel for unmapped indices
   const hue = Math.round(((n - 10) / 240) * 360) % 360;
   return `hsl(${hue},70%,55%)`;
 }
 
-function trueColorToHex(rgb: number): string {
+export function trueColorToHex(rgb: number): string {
   return '#' + (rgb & 0xFFFFFF).toString(16).padStart(6, '0');
 }
 

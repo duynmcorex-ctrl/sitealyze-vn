@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AnalysisMode, EnvParams, TerrainData, OverlayLayer, Report } from '../lib/types';
+import type { AnalysisMode, EnvParams, TerrainData, OverlayLayer, Report, LanduseData } from '../lib/types';
 import type { SlopeData, SlopeClassMode } from '../lib/analysis/slope';
 import type { HydrologyData } from '../lib/analysis/hydrology';
 import type { TerrainFeatures } from '../lib/analysis/features';
@@ -112,6 +112,10 @@ interface State {
   generateReport: (openPanel?: boolean) => void;
   toggleAllPeakElevations: () => void;
   setCameraPreset: (v: string | null) => void;
+
+  // ── Land use planning (parse từ bản vẽ QH chi tiết) ─────────────────────
+  landuse: LanduseData | null;
+  setLanduse: (l: LanduseData | null) => void;
 }
 
 /**
@@ -169,6 +173,8 @@ export const useSiteStore = create<State>((set, get) => ({
   theme: 'dark',
   projects: [],
   activeProjectId: null,
+  landuse: null,
+  setLanduse: (l) => set({ landuse: l }),
 
   // ── Helper nội bộ: lưu state hiện tại vào project đang active ──────────
   // (gọi trước khi switch, không expose ra ngoài)
@@ -183,9 +189,22 @@ export const useSiteStore = create<State>((set, get) => ({
     try {
       const cx = (t.bounds.minX + t.bounds.maxX) / 2;
       const cy = (t.bounds.minY + t.bounds.maxY) / 2;
+      console.log('[VN2000] bounds center:', cx.toFixed(2), cy.toFixed(2));
       const zone = detectVN2000Zone(cx, cy);
-      if (zone) geo = findProvince(zone.lat, zone.lon);
-    } catch { /* không crash nếu toạ độ không hợp lệ */ }
+      console.log('[VN2000] detected zone:', zone);
+      if (zone) {
+        geo = findProvince(zone.lat, zone.lon);
+        console.log(
+          '[Province]',
+          zone.lat.toFixed(3) + '°N,',
+          zone.lon.toFixed(3) + '°E',
+          '→',
+          geo?.province ?? 'KHÔNG TÌM THẤY (provinces.ts không cover vùng này)',
+        );
+      }
+    } catch (e) {
+      console.error('[Geo] detection error:', e);
+    }
 
     // Tự động cập nhật lat + gió khí hậu theo tỉnh & tháng hiện tại
     const currentMonth = get().env.month;
@@ -540,6 +559,10 @@ export const useSiteStore = create<State>((set, get) => ({
       case 'roads':
         // Roads data đã có sẵn trong overlayLayers, chỉ cần auto-bật showRoads
         if (!get().showRoads) set({ showRoads: true });
+        break;
+      case 'landuse':
+        // Land use data được set qua setLanduse() từ panel upload riêng
+        // Không cần compute gì thêm — render bằng LanduseLayer khi mode === 'landuse'
         break;
       default:
         break;

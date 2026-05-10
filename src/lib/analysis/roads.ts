@@ -38,7 +38,7 @@ export interface RoadsAnalysis {
  * không match "DUONG_DONG_MUC", "DUONG_DONG", "DUONG_MUC", v.v.
  */
 export const ROAD_LAYER_RE =
-  /(GIAOTHONG|GIAO[-_ ]?THONG|^GT$|^GT[-_ ]|[-_ ]GT[-_ ]|[-_ ]GT$|DUONG(?![-_ ]?(DONG|MUC|BINH|DO|DM|DC|DG))|D[-_]T|LO[-_ ]?GIOI|MEPDUONG|MEP[-_ ]?DUONG|TIMDUONG|TIM[-_ ]?DUONG|VIA[-_ ]?HE|VIAHE|ROAD(?![-_ ]?ELEV)|STREET|LANE|TRAFFIC|TRANSPORT)/i;
+  /(GIAOTHONG|GIAO[-_ ]?THONG|^GT$|^GT[-_ ]|[-_ ]GT[-_ ]|[-_ ]GT$|DUONG(?![-_ ]?(DONG|MUC|BINH|DO|DM|DC|DG))|MAU[-_ ]?DUONG|D[-_]T|LO[-_ ]?GIOI|MEPDUONG|MEP[-_ ]?DUONG|TIMDUONG|TIM[-_ ]?DUONG|VIA[-_ ]?HE|VIAHE|^PHO$|^PHO[-_ ]|[-_ ]PHO$|^HEM$|HEM[-_ ]|[-_ ]HEM$|^NGO$|NGO[-_ ]|[-_ ]NGO$|NOI[-_ ]?BO|ROAD(?![-_ ]?ELEV)|STREET|LANE|TRAFFIC|TRANSPORT)/i;
 
 /** Trả về true nếu tên layer thuộc giao thông */
 export function isRoadLayer(layerName: string): boolean {

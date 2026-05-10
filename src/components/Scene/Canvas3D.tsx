@@ -6,6 +6,7 @@ import { TerrainMeshBg } from './TerrainMeshBg';
 import { ContourLines } from './ContourLines';
 import { FlowArrows } from './FlowArrows';
 import { FeatureMarkers } from './FeatureMarkers';
+import { LanduseLayer } from './LanduseLayer';
 import { SunLight } from './SunLight';
 import { WindParticles } from './WindParticles';
 import { ViewpointMarker } from './ViewpointMarker';
@@ -92,6 +93,7 @@ export function Canvas3D() {
             {(mode === 'contour' || showContourOverlay) && <ContourLines />}
             {mode === 'hydrology' && <FlowArrows />}
             {mode === 'features' && <FeatureMarkers />}
+            {mode === 'landuse' && <LanduseLayer />}
             {mode === 'sun' && <SunLight />}
             {mode === 'wind' && <WindParticles />}
             {mode === 'viewshed' && <ViewpointMarker />}

@@ -12,6 +12,7 @@ const MODES: { id: AnalysisMode; label: string }[] = [
   { id: 'suitability', label: 'Đất XD' },
   { id: 'viewshed', label: 'Tầm nhìn' },
   { id: 'roads', label: 'Giao thông' },
+  { id: 'landuse', label: 'Quy hoạch SDD' },
 ];
 
 export function ModeSelector() {

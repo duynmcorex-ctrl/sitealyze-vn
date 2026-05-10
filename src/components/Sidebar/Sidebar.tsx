@@ -5,6 +5,7 @@ import { ModeSelector } from './ModeSelector';
 import { ViewpointTool } from './ViewpointTool';
 import { ExportPanel } from './ExportPanel';
 import { LayerPanel } from './LayerPanel';
+import { LandusePanel } from './LandusePanel';
 import { ProjectsPanel } from './ProjectsPanel';
 import { useSiteStore } from '../../store/useSiteStore';
 
@@ -31,10 +32,13 @@ export function Sidebar() {
         <Section title="5. Chế độ phân tích">
           <ModeSelector />
         </Section>
-        <Section title="6. Công cụ điểm nhìn">
+        <Section title="6. Quy hoạch sử dụng đất">
+          <LandusePanel />
+        </Section>
+        <Section title="7. Công cụ điểm nhìn">
           <ViewpointTool />
         </Section>
-        <Section title="7. Báo cáo phân tích">
+        <Section title="8. Báo cáo phân tích">
           <button
             onClick={() => generateRpt()}
             disabled={!terrain || reportLoading}
@@ -54,7 +58,7 @@ export function Sidebar() {
             <p className="text-[10px] text-slate-600 text-center">Tải file DXF trước để kích hoạt</p>
           )}
         </Section>
-        <Section title="8. Xuất dữ liệu">
+        <Section title="9. Xuất dữ liệu">
           <ExportPanel />
         </Section>
       </div>

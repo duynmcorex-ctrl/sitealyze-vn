@@ -3,6 +3,7 @@ import { getSlopeClasses } from '../../lib/analysis/slope';
 import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
 import { buildElevationLegendItems } from '../../lib/analysis/elevationPalette';
 import { RoadsLegend } from '../Scene/RoadsRender';
+import { LANDUSE_DISPLAY_COLOR, LANDUSE_LABEL } from '../../lib/dxf/parseLanduse';
 
 export function Legend() {
   const mode    = useSiteStore((s) => s.mode);
@@ -140,6 +141,10 @@ export function Legend() {
       title = 'Giao thông hiện trạng';
       content = <RoadsLegend />;
       break;
+    case 'landuse':
+      title = 'Quy hoạch sử dụng đất';
+      content = <LanduseLegend />;
+      break;
   }
 
   return (
@@ -243,6 +248,40 @@ function ElevationSteps({
           <span>{it.label}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function LanduseLegend() {
+  const landuse = useSiteStore((s) => s.landuse);
+  if (!landuse || landuse.parcels.length === 0) {
+    return (
+      <div className="text-xs text-slate-400 italic">
+        Tải file CAD QH ở mục "Quy hoạch sử dụng đất" để hiển thị bản đồ.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] text-slate-300">
+        {landuse.parcels.length} ô đất · {(landuse.totalAreaSqm / 10000).toFixed(2)} ha
+      </div>
+      <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+        {landuse.byType.map((b) => (
+          <div key={b.type} className="flex items-center gap-2 text-[11px] text-slate-200">
+            <span
+              className="w-4 h-4 rounded-sm flex-shrink-0 border border-white/15"
+              style={{ background: LANDUSE_DISPLAY_COLOR[b.type] }}
+            />
+            <span className="flex-1 min-w-0 truncate" title={LANDUSE_LABEL[b.type]}>
+              {LANDUSE_LABEL[b.type]}
+            </span>
+            <span className="text-slate-500 tabular-nums text-[10px]">
+              {b.pct.toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

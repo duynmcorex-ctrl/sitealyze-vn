@@ -40,15 +40,26 @@ export function TerrainMesh() {
       colors[i * 3 + 2] = c.b;
     };
 
-    if (mode === 'elevation' || mode === 'contour') {
+    // Terrain phẳng (Z biến thiên < 0.5m): tất cả mode dùng màu solid để tránh
+    // gradient giả (chia cho range gần 0)
+    const isFlat = Math.abs(hm.maxZ - hm.minZ) < 0.5;
+
+    if (mode === 'elevation') {
       // Dải màu rời rạc theo cao độ (10 bước)
-      for (let i = 0; i < n; i++) {
-        const idx = elevPaletteIndex(hm.data[i], hm.minZ, hm.maxZ);
-        const [r, g, b] = ELEV_PALETTE_RGB[idx];
-        colors[i * 3] = r;
-        colors[i * 3 + 1] = g;
-        colors[i * 3 + 2] = b;
+      if (isFlat) {
+        for (let i = 0; i < n; i++) setColor(i, '#9ca3af'); // xám trung tính
+      } else {
+        for (let i = 0; i < n; i++) {
+          const idx = elevPaletteIndex(hm.data[i], hm.minZ, hm.maxZ);
+          const [r, g, b] = ELEV_PALETTE_RGB[idx];
+          colors[i * 3] = r;
+          colors[i * 3 + 1] = g;
+          colors[i * 3 + 2] = b;
+        }
       }
+    } else if (mode === 'contour') {
+      // Mặt nền solid be nâu nhạt — đường đồng mức render bằng ContourLines.tsx ở trên
+      for (let i = 0; i < n; i++) setColor(i, '#d4cfc1');
     } else if (mode === 'wind') {
       // Wind: gradient mịn để particle nổi bật
       for (let i = 0; i < n; i++) {

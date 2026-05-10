@@ -88,9 +88,19 @@ export function EnvParams() {
               </button>
             </div>
           ) : (
-            <div className="text-[10px] text-amber-400/80 px-1 leading-tight">
-              ⚠ Chưa xác định được tỉnh từ toạ độ file CAD.
-              Chọn tỉnh bên dưới để app dùng đúng vĩ độ + khí hậu địa phương.
+            <div className="space-y-1 px-1">
+              <div className="text-[10px] text-amber-400/80 leading-tight">
+                ⚠ Chưa xác định được tỉnh từ toạ độ file CAD.
+                Chọn tỉnh bên dưới để app dùng đúng vĩ độ + khí hậu địa phương.
+              </div>
+              {terrain && (
+                <div className="text-[9px] text-slate-500 leading-tight font-mono">
+                  Tâm CAD: ({((terrain.bounds.minX + terrain.bounds.maxX) / 2).toFixed(0)},
+                  {' '}{((terrain.bounds.minY + terrain.bounds.maxY) / 2).toFixed(0)})
+                  <br />
+                  → Mở console (F12) xem [VN2000] log để debug
+                </div>
+              )}
             </div>
           )}
           <select
