@@ -46,9 +46,10 @@ export function rasterizeTinToHeightmap(
     const triMaxX = Math.max(ax, bx, cx);
     const triMaxY = Math.max(ay, by, cy);
 
-    // Bỏ qua các tam giác quá dài (artifact của Delaunay ở rìa)
+    // Bỏ qua tam giác artifact Delaunay cực dài (nối 2 điểm xa nhau qua vùng trống lớn).
+    // Tăng từ 0.08 → 0.25 để địa hình thưa điểm (contour cách xa nhau) vẫn được phủ.
     const longEdge = Math.max(triMaxX - triMinX, triMaxY - triMinY);
-    if (longEdge > Math.max(w, h) * 0.08) continue;
+    if (longEdge > Math.max(w, h) * 0.25) continue;
 
     const x0 = Math.max(0, Math.floor((triMinX - bounds.minX) / cellSize));
     const x1 = Math.min(width - 1, Math.ceil((triMaxX - bounds.minX) / cellSize));

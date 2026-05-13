@@ -253,7 +253,24 @@ function Swatches({ items }: { items: { color: string; label: string }[] }) {
 function ElevationSteps({ min, max }: { min: number; max: number }) {
   const range = max - min;
   const steps = ELEV_PALETTE_HEX.length; // 10
-  // Build 10 items from high → low (palette index 9 = highest = last)
+
+  // Địa hình phẳng: không có thông tin cao độ
+  if (range < 0.1) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 text-[11px] text-slate-200">
+          <span className="w-5 h-3.5 rounded-sm flex-shrink-0" style={{ background: '#9ca3af' }} />
+          <span>Đồng phẳng Z ≈ {min.toFixed(1)} m</span>
+        </div>
+        <div className="text-[9px] text-amber-400/80 leading-tight px-0.5">
+          ⚠ File CAD chưa có cao độ (Z=0). Nhập "Cao độ gốc (MSL)" ở mục Tham số để hiển thị đúng,
+          hoặc đảm bảo DXF có nhãn TEXT cao độ trên đường đồng mức.
+        </div>
+      </div>
+    );
+  }
+
+  // Build 10 items matching mesh vertex colors
   const items = ELEV_PALETTE_HEX.map((color, idx) => {
     const zLow  = min + (idx / steps) * range;
     const zHigh = min + ((idx + 1) / steps) * range;
@@ -271,7 +288,7 @@ function ElevationSteps({ min, max }: { min: number; max: number }) {
         </div>
       ))}
       <div className="text-[9px] text-slate-500 pt-0.5 leading-tight">
-        Màu tương đối với địa hình (10 bước đều)
+        Màu tương đối trong phạm vi địa hình
       </div>
     </div>
   );

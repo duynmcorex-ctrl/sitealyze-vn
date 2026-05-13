@@ -17,6 +17,17 @@ import { findProvince, makeGeoFromProvinceName } from '../lib/coord/provinces';
 import type { GeoInfo } from '../lib/coord/provinces';
 import { getWindClimate } from '../lib/analysis/climatology';
 
+/** Loại dự án quy hoạch VN */
+export type ProjectType =
+  | 'kdc'          // Khu dân cư
+  | 'kdt'          // Khu đô thị mới
+  | 'kcn'          // Khu công nghiệp
+  | 'du_lich'      // Du lịch / nghỉ dưỡng
+  | 'golf'         // Sân golf
+  | 'nong_lam'     // Nông - lâm nghiệp
+  | 'hanh_chinh'   // Hành chính - trung tâm
+  | 'khac';        // Khác
+
 /** Snapshot của một dự án — lưu để switch qua lại */
 export interface StoredProject {
   id: string;
@@ -27,6 +38,13 @@ export interface StoredProject {
   geo: GeoInfo | null;
   env: EnvParams;
   viewpoint: { x: number; z: number; height: number } | null;
+  /** Thông tin dự án bổ sung (điền trong ProjectInfoPanel) */
+  projectType?: ProjectType;
+  description?: string;
+  /** Diện tích thủ công (ha) — nếu chưa có terrain hoặc muốn ghi đè */
+  manualAreaHa?: number;
+  /** Chủ đầu tư / đơn vị tư vấn */
+  investor?: string;
 }
 
 interface AnalysisCache {
@@ -84,6 +102,8 @@ interface State {
   removeProject: (id: string) => void;
   renameProject: (id: string, name: string) => void;
   toggleProjectVisible: (id: string) => void;
+  /** Cập nhật thông tin thêm cho active project (type, description, investor, manualAreaHa) */
+  updateProjectMeta: (patch: Partial<Pick<StoredProject, 'projectType' | 'description' | 'investor' | 'manualAreaHa'>>) => void;
   // ──────────────────────────────────────────────────────────────────────
 
   setTerrain: (t: TerrainData | null) => void;
@@ -470,6 +490,16 @@ export const useSiteStore = create<State>((set, get) => ({
     set((s) => ({
       projects: s.projects.map(p => p.id === id ? { ...p, visible: !p.visible } : p),
     })),
+
+  updateProjectMeta: (patch) =>
+    set((s) => {
+      if (!s.activeProjectId) return {};
+      return {
+        projects: s.projects.map(p =>
+          p.id === s.activeProjectId ? { ...p, ...patch } : p
+        ),
+      };
+    }),
 
   generateReport: (openPanel = true) => {
     const t = get().terrain;

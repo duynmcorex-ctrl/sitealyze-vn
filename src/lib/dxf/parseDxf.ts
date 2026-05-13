@@ -20,6 +20,77 @@ interface DxfEntity {
   end?: DxfVertex;
   // 3DFACE
   faces?: DxfVertex[];
+  // TEXT / MTEXT
+  text?: string;
+  string?: string;
+  position?: DxfVertex;
+  startPoint?: DxfVertex;
+  insertionPoint?: DxfVertex;
+}
+
+/** Thử parse giá trị số từ text CAD (loại bỏ ký tự thừa, dấu phẩy → dấu chấm) */
+function parseNumericText(raw: string): number | null {
+  if (!raw) return null;
+  // Loại bỏ ký tự AutoCAD MTEXT formatting: \\P, {}, \pxi...
+  const clean = raw.replace(/\\[A-Za-z][^;]*;|[{}\\]|\\P/g, '').trim();
+  // Chấp nhận format "50.000", "50,000", "-5.5", "50" etc.
+  const m = clean.match(/^(-?\d+(?:[.,]\d+)?)$/);
+  if (!m) return null;
+  const v = parseFloat(m[1].replace(',', '.'));
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Point-to-segment squared distance (2D) */
+function pt2segDist2(px: number, py: number,
+                     ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-12) return (px - ax) ** 2 + (py - ay) ** 2;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2;
+}
+
+/**
+ * Khi tất cả contour đều có Z=0 (file CAD chưa gán cao độ),
+ * cố gắng đọc nhãn TEXT gần mỗi polyline để gán đúng elevation.
+ * Trả về contours đã được cập nhật Z (hoặc giữ nguyên nếu không tìm được).
+ */
+function assignElevationFromTextLabels(
+  contours: ContourPolyline[],
+  textLabels: { x: number; y: number; value: number }[],
+  terrainDiag: number, // đường chéo terrain (m) — dùng làm tham chiếu khoảng cách
+): ContourPolyline[] {
+  if (textLabels.length === 0) return contours;
+
+  // Ngưỡng: text phải nằm trong 5% đường chéo terrain so với contour gần nhất
+  const maxDist2 = (terrainDiag * 0.05) ** 2;
+
+  return contours.map((c) => {
+    let bestDist2 = Infinity;
+    let bestVal: number | null = null;
+
+    for (const lbl of textLabels) {
+      // Tìm khoảng cách gần nhất từ text đến bất kỳ đoạn nào của polyline
+      for (let i = 0; i < c.points.length - 1; i++) {
+        const d2 = pt2segDist2(
+          lbl.x, lbl.y,
+          c.points[i].x, c.points[i].y,
+          c.points[i + 1].x, c.points[i + 1].y,
+        );
+        if (d2 < bestDist2) { bestDist2 = d2; bestVal = lbl.value; }
+      }
+      // Đơn điểm (polyline 1 điểm)
+      if (c.points.length === 1) {
+        const d2 = (lbl.x - c.points[0].x) ** 2 + (lbl.y - c.points[0].y) ** 2;
+        if (d2 < bestDist2) { bestDist2 = d2; bestVal = lbl.value; }
+      }
+    }
+
+    if (bestVal !== null && bestDist2 <= maxDist2) {
+      return { ...c, elevation: bestVal };
+    }
+    return c;
+  });
 }
 
 // Pattern auto-detect tên layer chứa đường đồng mức (Việt + Anh phổ biến)
@@ -60,6 +131,8 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   const layerOk = userMatcher || autoMatcher;
 
   const contours: ContourPolyline[] = [];
+  /** TEXT / MTEXT entities có giá trị số — dùng để gán Z cho contour Z=0 */
+  const textLabels: { x: number; y: number; value: number }[] = [];
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
   let pointCount = 0;
@@ -100,8 +173,22 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   for (const ent of dxf.entities) {
     const type = (ent.type || '').toUpperCase();
 
-    // Bỏ qua các entity không phải polyline/line
-    if (type === 'TEXT' || type === 'MTEXT' || type === 'INSERT' || type === 'ATTDEF' ||
+    // ── Thu thập nhãn TEXT / MTEXT có giá trị số (cao độ) ──────────────────────
+    if (type === 'TEXT' || type === 'MTEXT') {
+      const raw = ent.text ?? ent.string ?? '';
+      const val = parseNumericText(raw);
+      if (val !== null) {
+        // Lấy vị trí insert của TEXT entity
+        const pos = ent.position ?? ent.startPoint ?? ent.insertionPoint;
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+          textLabels.push({ x: pos.x, y: pos.y, value: val });
+        }
+      }
+      continue; // TEXT không dùng để tạo contour
+    }
+
+    // Bỏ qua các entity không tạo polyline geometry
+    if (type === 'INSERT' || type === 'ATTDEF' ||
         type === 'DIMENSION' || type === 'HATCH' || type === 'SOLID') continue;
 
     // ── Road detection — CHỈ chạy nếu layer KHÔNG phải contour layer ──────────
@@ -187,6 +274,28 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
 
   if (!Number.isFinite(minX) || pointCount === 0) {
     throw new Error('Không tìm thấy đường đồng mức có cao độ trong DXF. Kiểm tra layer/Z.');
+  }
+
+  // ── Tái tạo Z từ nhãn TEXT nếu terrain phẳng (tất cả Z≈0) ─────────────────
+  // Nhiều file CAD VN xuất contour tại Z=0, cao độ thực chỉ có trên nhãn TEXT.
+  if (Math.abs(maxZ - minZ) < 1 && textLabels.length > 0) {
+    const diag = Math.hypot(maxX - minX, maxY - minY);
+    const updatedContours = assignElevationFromTextLabels(contours, textLabels, diag);
+
+    // Cập nhật lại minZ/maxZ từ contours đã gán text
+    let newMinZ = Infinity, newMaxZ = -Infinity;
+    for (const c of updatedContours) {
+      if (c.elevation < newMinZ) newMinZ = c.elevation;
+      if (c.elevation > newMaxZ) newMaxZ = c.elevation;
+    }
+    if (newMaxZ > newMinZ + 0.5) {
+      // TEXT labels đã gán được cao độ thực → dùng kết quả mới
+      contours.length = 0;
+      for (const c of updatedContours) contours.push(c);
+      minZ = newMinZ;
+      maxZ = newMaxZ;
+      console.log(`[parseDxf] Tái tạo Z từ ${textLabels.length} nhãn TEXT: ${newMinZ.toFixed(1)} – ${newMaxZ.toFixed(1)} m`);
+    }
   }
 
   // Lọc outlier Z bằng IQR — loại bỏ các contour có cao độ bất thường

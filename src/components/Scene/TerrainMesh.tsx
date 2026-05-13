@@ -47,7 +47,8 @@ export function TerrainMesh() {
     if (mode === 'elevation') {
       // Dải màu rời rạc theo cao độ (10 bước)
       if (isFlat) {
-        for (let i = 0; i < n; i++) setColor(i, '#9ca3af'); // xám trung tính
+        // Địa hình phẳng — màu xám nhạt trung tính, không dùng gradient giả
+        for (let i = 0; i < n; i++) setColor(i, '#94a3b8');
       } else {
         for (let i = 0; i < n; i++) {
           const idx = elevPaletteIndex(hm.data[i], hm.minZ, hm.maxZ);
