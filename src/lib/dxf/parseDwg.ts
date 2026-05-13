@@ -473,9 +473,13 @@ export async function parseDwgBuffer(
     }
 
     if (!reconstructed) {
-      console.warn(
-        '[parseDwg] KHÔNG tái tạo được Z. Kiểm tra console để xem tên layer và TEXT entities.\n' +
-        'Giải pháp: nhập tên layer vào ô "Lọc layer" hoặc mở file bằng AutoCAD/LibreCAD để kiểm tra.'
+      throw new Error(
+        'File DWG này không chứa cao độ Z, nhãn TEXT, hoặc layer mã hoá cao độ.\n\n' +
+        'Giải pháp:\n' +
+        '  1. Mở file trong AutoCAD\n' +
+        '  2. File → Save As → DXF (R2018)\n' +
+        '  3. Tải file DXF lên app\n\n' +
+        'DXF thường giữ đầy đủ Z + TEXT spot heights mà DWG đã mất khi flatten.'
       );
     }
   }

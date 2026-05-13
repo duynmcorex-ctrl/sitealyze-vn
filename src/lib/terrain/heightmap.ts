@@ -33,6 +33,28 @@ export function rasterizeTinToHeightmap(
   const verts = tin.vertices;
   const tris = tin.triangles;
 
+  // ── Adaptive median filter: tính ngưỡng dựa trên phân phối edge length thực tế ──
+  // Lý do: filter cố định 15% × map dimension không thích nghi được với mật độ contour.
+  // Vùng dày contour → median edge nhỏ → filter chặt → loại convex-hull artifacts.
+  // Vùng thưa hợp lệ → median to → filter rộng → giữ tam giác cần thiết.
+  const triLongestEdges: number[] = [];
+  for (let t = 0; t < tris.length; t += 3) {
+    const ai = tris[t] * 3, bi = tris[t + 1] * 3, ci = tris[t + 2] * 3;
+    const ax = verts[ai], ay = verts[ai + 1];
+    const bx = verts[bi], by = verts[bi + 1];
+    const cx = verts[ci], cy = verts[ci + 1];
+    const eAB = Math.hypot(bx - ax, by - ay);
+    const eBC = Math.hypot(cx - bx, cy - by);
+    const eCA = Math.hypot(ax - cx, ay - cy);
+    triLongestEdges.push(Math.max(eAB, eBC, eCA));
+  }
+  triLongestEdges.sort((a, b) => a - b);
+  const medianEdge = triLongestEdges[Math.floor(triLongestEdges.length / 2)] || 1;
+  // Factor 4×: tam giác dài hơn 4 lần median → coi là artifact (qua vùng trống)
+  const edgeThreshold = medianEdge * 4;
+  console.log(`[heightmap] Adaptive filter: median edge=${medianEdge.toFixed(1)}m, threshold=${edgeThreshold.toFixed(1)}m`);
+  let droppedTri = 0;
+
   for (let t = 0; t < tris.length; t += 3) {
     const ai = tris[t] * 3;
     const bi = tris[t + 1] * 3;
@@ -46,12 +68,12 @@ export function rasterizeTinToHeightmap(
     const triMaxX = Math.max(ax, bx, cx);
     const triMaxY = Math.max(ay, by, cy);
 
-    // Bỏ qua tam giác artifact Delaunay cực dài (nối 2 điểm xa nhau qua vùng trống lớn).
-    // Tham số 0.15: cân bằng giữa "lấp đủ vùng có contour thưa" và "KHÔNG tạo địa hình ảo
-    // ở vùng trống thật sự". Anh KTS yêu cầu giữ nguyên hiện trạng — thà thiếu một vài
-    // mảng nhỏ còn hơn fabricate địa hình.
-    const longEdge = Math.max(triMaxX - triMinX, triMaxY - triMinY);
-    if (longEdge > Math.max(w, h) * 0.15) continue;
+    // Adaptive filter: tính longest edge thực sự (không chỉ bbox)
+    const eAB = Math.hypot(bx - ax, by - ay);
+    const eBC = Math.hypot(cx - bx, cy - by);
+    const eCA = Math.hypot(ax - cx, ay - cy);
+    const longEdge = Math.max(eAB, eBC, eCA);
+    if (longEdge > edgeThreshold) { droppedTri++; continue; }
 
     const x0 = Math.max(0, Math.floor((triMinX - bounds.minX) / cellSize));
     const x1 = Math.min(width - 1, Math.ceil((triMaxX - bounds.minX) / cellSize));
@@ -78,6 +100,9 @@ export function rasterizeTinToHeightmap(
       }
     }
   }
+
+  const totalTri = tris.length / 3;
+  console.log(`[heightmap] Filtered ${droppedTri}/${totalTri} triangles (${(droppedTri/totalTri*100).toFixed(1)}%) as convex-hull artifacts`);
 
   // Lưu mask trước khi lấp — mask=1 nghĩa là cell đã được rasterize thực sự
   const mask = new Uint8Array(filled); // copy trước khi fillHoles thay đổi filled

@@ -9,8 +9,6 @@ import type { TerrainData } from '../lib/types';
 export interface TerrainWorkerAPI {
   processDxf(text: string, gridResolution?: number, layerPattern?: string): Promise<TerrainData>;
   processDwg(buffer: ArrayBuffer, gridResolution?: number, layerPattern?: string): Promise<TerrainData>;
-  /** Rebuild terrain từ ParsedDxf đã được gán elevation (dùng khi tái tạo Z thủ công) */
-  buildFromParsed(parsed: import('../lib/types').ParsedDxf, gridResolution?: number): Promise<TerrainData>;
 }
 
 async function buildTerrain(
@@ -42,10 +40,6 @@ const api: TerrainWorkerAPI = {
 
   async processDwg(buffer, gridResolution = 384, layerPattern) {
     const parsed = await parseDwgBuffer(buffer, layerPattern);
-    return buildTerrain(parsed, gridResolution);
-  },
-
-  async buildFromParsed(parsed, gridResolution = 384) {
     return buildTerrain(parsed, gridResolution);
   },
 };

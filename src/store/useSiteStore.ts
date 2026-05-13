@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AnalysisMode, EnvParams, TerrainData, OverlayLayer, Report, LanduseData, ContourPolyline } from '../lib/types';
+import type { AnalysisMode, EnvParams, TerrainData, OverlayLayer, Report, LanduseData } from '../lib/types';
 import type { SlopeData, SlopeClassMode } from '../lib/analysis/slope';
 import type { HydrologyData } from '../lib/analysis/hydrology';
 import type { TerrainFeatures } from '../lib/analysis/features';
@@ -16,7 +16,6 @@ import { detectVN2000Zone } from '../lib/coord/vn2000';
 import { findProvince, makeGeoFromProvinceName } from '../lib/coord/provinces';
 import type { GeoInfo } from '../lib/coord/provinces';
 import { getWindClimate } from '../lib/analysis/climatology';
-import { getTerrainApi } from '../workers/terrainClient';
 
 /** Loại dự án quy hoạch VN */
 export type ProjectType =
@@ -108,14 +107,6 @@ interface State {
   // ──────────────────────────────────────────────────────────────────────
 
   setTerrain: (t: TerrainData | null) => void;
-  /**
-   * Tái tạo địa hình 3D từ các đường đồng mức phẳng (Z=0) bằng cách sắp xếp
-   * không gian: chia contour thành nhóm theo kích thước vùng bao, gán cao độ
-   * dựa theo baseElev + interval × cấp độ.
-   * direction = 'hill': contour ngoài cùng (lớn nhất) = thấp nhất (đồi/núi)
-   * direction = 'basin': contour ngoài cùng (lớn nhất) = cao nhất (vùng trũng/hồ)
-   */
-  rebuildFlatTerrain: (baseElev: number, interval: number, direction: 'hill' | 'basin') => void;
   setMode: (m: AnalysisMode) => void;
   setEnv: (patch: Partial<EnvParams>) => void;
   setLoading: (v: boolean) => void;
@@ -406,91 +397,6 @@ export const useSiteStore = create<State>((set, get) => ({
       return { geo: newGeo, env: { ...s.env, ...envPatch }, projects };
     });
   },
-  /**
-   * Tái tạo địa hình 3D từ đường đồng mức phẳng (Z=0) bằng sắp xếp không gian.
-   * Thuật toán: tính bounding-diagonal mỗi contour → sort → chia nhóm → gán Z.
-   */
-  rebuildFlatTerrain: (baseElev, interval, direction) => {
-    const terrain = get().terrain;
-    if (!terrain) return;
-
-    const contours = terrain.contours;
-    if (contours.length === 0) return;
-
-    // Tính bounding diagonal cho mỗi contour (proxy cho "mức ngoài/trong")
-    const withDiag = contours.map((c) => {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const p of c.points) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      }
-      const diag = Math.hypot(maxX - minX, maxY - minY);
-      return { contour: c, diag };
-    });
-
-    // Sort theo diagonal
-    const sorted = [...withDiag].sort((a, b) => b.diag - a.diag); // lớn → nhỏ
-
-    // Gom nhóm các contour có diagonal gần nhau (±8%) thành cùng một cấp độ
-    const groups: ContourPolyline[][] = [];
-    let currentGroup: typeof sorted = [];
-    for (const item of sorted) {
-      if (currentGroup.length === 0) {
-        currentGroup.push(item);
-      } else {
-        const ref = currentGroup[0].diag;
-        if (Math.abs(item.diag - ref) / Math.max(1, ref) < 0.08) {
-          currentGroup.push(item);
-        } else {
-          groups.push(currentGroup.map(i => i.contour));
-          currentGroup = [item];
-        }
-      }
-    }
-    if (currentGroup.length > 0) groups.push(currentGroup.map(i => i.contour));
-
-    // Gán elevation: nhóm 0 (lớn nhất) = ngoài cùng
-    // hill:  ngoài = thấp → elev = base + groupIdx × interval
-    // basin: ngoài = cao → elev = base + (n-1-groupIdx) × interval
-    const n = groups.length;
-    const assignedContours: ContourPolyline[] = [];
-    let newMinZ = Infinity, newMaxZ = -Infinity;
-    groups.forEach((grp, gIdx) => {
-      const level = direction === 'hill' ? gIdx : (n - 1 - gIdx);
-      const elev = baseElev + level * interval;
-      if (elev < newMinZ) newMinZ = elev;
-      if (elev > newMaxZ) newMaxZ = elev;
-      for (const c of grp) assignedContours.push({ ...c, elevation: elev });
-    });
-
-    console.log(
-      `[rebuildFlatTerrain] ${n} nhóm, Z: ${newMinZ}–${newMaxZ}m`,
-      `(${direction}, base=${baseElev}, interval=${interval})`,
-    );
-
-    // Gọi worker rebuild với contours đã gán elevation mới
-    set({ loading: true, error: null, analysis: {} });
-    const newBounds = { ...terrain.bounds, minZ: newMinZ, maxZ: newMaxZ };
-    const parsed: import('../lib/types').ParsedDxf = {
-      contours: assignedContours,
-      bounds: newBounds,
-      pointCount: assignedContours.reduce((s, c) => s + c.points.length, 0),
-      rawRoads: terrain.rawRoadPolylines,
-    };
-
-    getTerrainApi()
-      .buildFromParsed(parsed, 384)
-      .then((t) => {
-        get().setTerrain(t);
-        set({ loading: false });
-      })
-      .catch((e) => {
-        set({ loading: false, error: String(e) });
-      });
-  },
-
   toggleReportPanel: () => set((s) => ({ showReportPanel: !s.showReportPanel })),
   toggleAllPeakElevations: () => set((s) => ({ showAllPeakElevations: !s.showAllPeakElevations })),
   setCameraPreset: (v) => set({ cameraPreset: v }),

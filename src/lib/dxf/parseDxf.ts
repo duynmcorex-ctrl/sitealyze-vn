@@ -62,8 +62,9 @@ function assignElevationFromTextLabels(
 ): ContourPolyline[] {
   if (textLabels.length === 0) return contours;
 
-  // Ngưỡng: text phải nằm trong 5% đường chéo terrain so với contour gần nhất
-  const maxDist2 = (terrainDiag * 0.05) ** 2;
+  // Ngưỡng: text phải nằm trong 8% đường chéo terrain so với contour gần nhất
+  // (rộng hơn 5% trước đây để bắt nhãn TEXT đặt xa đường đồng mức)
+  const maxDist2 = (terrainDiag * 0.08) ** 2;
 
   return contours.map((c) => {
     let bestDist2 = Infinity;
@@ -276,8 +277,10 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     throw new Error('Không tìm thấy đường đồng mức có cao độ trong DXF. Kiểm tra layer/Z.');
   }
 
-  // ── Tái tạo Z từ nhãn TEXT nếu terrain phẳng (tất cả Z≈0) ─────────────────
-  if (Math.abs(maxZ - minZ) < 1 && textLabels.length > 0) {
+  // ── Tái tạo Z từ nhãn TEXT khi terrain gần như phẳng (Z biến thiên < 5m) ─
+  // Trigger mở rộng từ <1m → <5m để bắt được file có vài contour Z=2 do noise
+  // nhưng cơ bản vẫn flat (chưa có cao độ thật).
+  if (Math.abs(maxZ - minZ) < 5 && textLabels.length > 0) {
     const diag = Math.hypot(maxX - minX, maxY - minY);
     const updatedContours = assignElevationFromTextLabels(contours, textLabels, diag);
 
@@ -295,9 +298,21 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     }
   }
 
-  // ❌ KHÔNG tự ý sửa cao độ MSL — anh muốn giữ ĐÚNG Z từ CAD.
-  // Nếu Z của file là relative (0-360m thay vì 1380-1420m), user dùng nút
-  // "Cao độ gốc (MSL)" để dịch hiển thị, KHÔNG đổi dữ liệu gốc.
+  // ── Nếu sau tái tạo Z vẫn phẳng (< 0.5m) → throw error rõ ràng ──────────
+  // Không có Z trong file + không có TEXT match được → không thể tạo địa hình 3D
+  if (Math.abs(maxZ - minZ) < 0.5) {
+    throw new Error(
+      'File DXF không có cao độ Z và không tìm thấy nhãn TEXT đủ gần đường đồng mức để tái tạo.\n\n' +
+      'Giải pháp:\n' +
+      '  1. Kiểm tra file CAD có đường đồng mức 3D (POLYLINE3D) hoặc thuộc tính Elevation\n' +
+      '  2. Hoặc đảm bảo có nhãn TEXT cao độ (vd: "1411.3") đặt cạnh các đường đồng mức\n' +
+      '  3. Hoặc convert sang DXF từ AutoCAD: File → Save As → DXF (R2018) để bảo toàn Z'
+    );
+  }
+
+  // ❌ KHÔNG tự ý sửa cao độ MSL — giữ ĐÚNG Z từ CAD.
+  // Nếu Z file là relative (0-360m thay vì 1380-1420m), user dùng "Cao độ gốc (MSL)"
+  // để dịch hiển thị, KHÔNG đổi dữ liệu gốc.
 
   // Lọc outlier Z bằng IQR — loại bỏ các contour có cao độ bất thường
   // (thường do text/block/annotation bị đọc nhầm thành contour, ví dụ Z=9999, Z=-100)
