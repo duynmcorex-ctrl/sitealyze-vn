@@ -348,13 +348,7 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   // Nếu Z file là relative (0-360m thay vì 1380-1420m), user dùng "Cao độ gốc (MSL)"
   // để dịch hiển thị, KHÔNG đổi dữ liệu gốc.
 
-  // ── Tách contour Z=0 vs contour có Z thật khi mix giữa flat + có Z ──────
-  // Bug case: file có nhiều contour Z=0 (draft/annotation) + contour có Z thật
-  // → IQR filter với iqr=0 sẽ FILTER MẤT contour Z thật → terrain phẳng.
-  //
-  // Fix: nếu cluster Z thật CAO HẲN (|median non-zero| > 50m) → bỏ Z=0.
-  // Vùng đồi/núi (Đà Lạt 1400m, Sapa 1500m...): bỏ Z=0 draft ✓
-  // Vùng ven biển (Z thật 5-20m): GIỮ NGUYÊN cả Z=0 (có thể là mép biển) ✓
+  // ── Bước 1: Tách contour Z=0 vs Z thật (Mixed Z) ──────────────────────────
   const zeroCount = contours.filter(c => Math.abs(c.elevation) < 0.001).length;
   const nonZeroElevs = contours
     .filter(c => Math.abs(c.elevation) >= 0.001)
@@ -363,7 +357,6 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   if (zeroCount > 0 && nonZeroElevs.length >= 10) {
     const medianNonZero = nonZeroElevs[Math.floor(nonZeroElevs.length / 2)];
     if (Math.abs(medianNonZero) > 50) {
-      // Z thật cao hẳn → Z=0 chắc chắn là draft (vd Đà Lạt 1400m: Z=0 không thể là terrain)
       const realContours = contours.filter(c => Math.abs(c.elevation) >= 0.001);
       console.log(`[parseDxf] Mixed Z (median non-zero=${medianNonZero.toFixed(0)}m > 50): bỏ ${zeroCount} contour Z=0 (draft), giữ ${nonZeroElevs.length} có Z thật`);
       contours.length = 0;
@@ -374,8 +367,45 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
         if (c.elevation > maxZ) maxZ = c.elevation;
       }
     } else {
-      // Z thật thấp (ven biển/đồng bằng) → giữ Z=0 vì có thể là contour hợp lệ (mép nước)
       console.log(`[parseDxf] Mixed Z (median=${medianNonZero.toFixed(1)}m ≤ 50): GIỮ ${zeroCount} contour Z=0 (có thể hợp lệ)`);
+    }
+  }
+
+  // ── Bước 2: Cluster outlier removal — phát hiện GAP lớn trong phân phối Z ─
+  // Bug case: file Hồ Tuyền Lâm có 391 contour Z=1200-1900m + 25 contour Z=70m
+  // → Delaunay nối 2 cluster qua vùng trống → vách núi giả từ 70→1900m
+  //
+  // Fix: sort Z, tìm GAP lớn nhất. Nếu gap > 100m → bimodal data, chỉ giữ cluster
+  // chứa median (cluster terrain chính), bỏ cluster rời (outlier).
+  if (contours.length >= 20) {
+    const sortedZ = contours.map(c => c.elevation).sort((a, b) => a - b);
+    const med = sortedZ[Math.floor(sortedZ.length / 2)];
+    let largestGap = 0, gapIdx = -1;
+    for (let i = 1; i < sortedZ.length; i++) {
+      const gap = sortedZ[i] - sortedZ[i - 1];
+      if (gap > largestGap) { largestGap = gap; gapIdx = i; }
+    }
+    // Gap đủ lớn (> 100m hoặc > 30% range) → có cluster outlier
+    const range = sortedZ[sortedZ.length - 1] - sortedZ[0];
+    if (largestGap > 100 && largestGap > range * 0.3 && gapIdx > 0) {
+      const lowMax = sortedZ[gapIdx - 1];
+      const highMin = sortedZ[gapIdx];
+      const keepHigh = med >= highMin;
+      const beforeCount = contours.length;
+      const kept = keepHigh
+        ? contours.filter(c => c.elevation >= highMin)
+        : contours.filter(c => c.elevation <= lowMax);
+      console.log(
+        `[parseDxf] Cluster gap=${largestGap.toFixed(0)}m tại Z=${lowMax.toFixed(1)}↔${highMin.toFixed(1)}: ` +
+        `giữ cluster ${keepHigh ? 'CAO' : 'THẤP'} (${kept.length}/${beforeCount} contour)`
+      );
+      contours.length = 0;
+      for (const c of kept) contours.push(c);
+      minZ = Infinity; maxZ = -Infinity;
+      for (const c of contours) {
+        if (c.elevation < minZ) minZ = c.elevation;
+        if (c.elevation > maxZ) maxZ = c.elevation;
+      }
     }
   }
 
