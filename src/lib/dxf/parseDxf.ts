@@ -303,23 +303,33 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   // để dịch hiển thị, KHÔNG đổi dữ liệu gốc.
 
   // ── Tách contour Z=0 vs contour có Z thật khi mix giữa flat + có Z ──────
-  // Bug case: file có 800 contour Z=0 (lớp annotation/frame draft) + 271 contour
-  // có Z thật (50-360m) → IQR filter cũ với iqr=0 sẽ FILTER MẤT 271 contour có Z thật
-  // → terrain phẳng + thiếu vùng đó. Fix: nếu majority ở Z=0 nhưng có nhóm khác
-  // với Z thật, ƯU TIÊN nhóm có Z thật.
+  // Bug case: file có nhiều contour Z=0 (draft/annotation) + contour có Z thật
+  // → IQR filter với iqr=0 sẽ FILTER MẤT contour Z thật → terrain phẳng.
+  //
+  // Fix: nếu cluster Z thật CAO HẲN (|median non-zero| > 50m) → bỏ Z=0.
+  // Vùng đồi/núi (Đà Lạt 1400m, Sapa 1500m...): bỏ Z=0 draft ✓
+  // Vùng ven biển (Z thật 5-20m): GIỮ NGUYÊN cả Z=0 (có thể là mép biển) ✓
   const zeroCount = contours.filter(c => Math.abs(c.elevation) < 0.001).length;
-  const nonZeroCount = contours.length - zeroCount;
-  if (zeroCount > 0 && nonZeroCount >= 10) {
-    // Có cả 2 nhóm — ưu tiên giữ nhóm có Z thật, BỎ contour Z=0 (draft/annotation)
-    const realContours = contours.filter(c => Math.abs(c.elevation) >= 0.001);
-    console.log(`[parseDxf] Mixed Z: bỏ ${zeroCount} contour Z=0 (draft), giữ ${nonZeroCount} contour có Z thật`);
-    contours.length = 0;
-    for (const c of realContours) contours.push(c);
-    // Cập nhật minZ/maxZ
-    minZ = Infinity; maxZ = -Infinity;
-    for (const c of contours) {
-      if (c.elevation < minZ) minZ = c.elevation;
-      if (c.elevation > maxZ) maxZ = c.elevation;
+  const nonZeroElevs = contours
+    .filter(c => Math.abs(c.elevation) >= 0.001)
+    .map(c => c.elevation)
+    .sort((a, b) => a - b);
+  if (zeroCount > 0 && nonZeroElevs.length >= 10) {
+    const medianNonZero = nonZeroElevs[Math.floor(nonZeroElevs.length / 2)];
+    if (Math.abs(medianNonZero) > 50) {
+      // Z thật cao hẳn → Z=0 chắc chắn là draft (vd Đà Lạt 1400m: Z=0 không thể là terrain)
+      const realContours = contours.filter(c => Math.abs(c.elevation) >= 0.001);
+      console.log(`[parseDxf] Mixed Z (median non-zero=${medianNonZero.toFixed(0)}m > 50): bỏ ${zeroCount} contour Z=0 (draft), giữ ${nonZeroElevs.length} có Z thật`);
+      contours.length = 0;
+      for (const c of realContours) contours.push(c);
+      minZ = Infinity; maxZ = -Infinity;
+      for (const c of contours) {
+        if (c.elevation < minZ) minZ = c.elevation;
+        if (c.elevation > maxZ) maxZ = c.elevation;
+      }
+    } else {
+      // Z thật thấp (ven biển/đồng bằng) → giữ Z=0 vì có thể là contour hợp lệ (mép nước)
+      console.log(`[parseDxf] Mixed Z (median=${medianNonZero.toFixed(1)}m ≤ 50): GIỮ ${zeroCount} contour Z=0 (có thể hợp lệ)`);
     }
   }
 
