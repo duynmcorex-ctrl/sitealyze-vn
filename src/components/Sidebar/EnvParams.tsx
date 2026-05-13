@@ -1,9 +1,12 @@
-import { Grid3x3, Layers, MapPin, Route, Trees, Wind, RotateCcw } from 'lucide-react';
+import { Grid3x3, Layers, MapPin, Route, Trees, Wind, RotateCcw, Navigation } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
 import type { SlopeClassMode } from '../../lib/analysis/slope';
 import { PROVINCES } from '../../lib/coord/provinces';
 import { SURFACE_LABEL, SURFACE_COLOR, ROLE_LABEL } from '../../lib/analysis/roadClassify';
 import { getWindClimate, getRainfallClimate, climateZoneDescription } from '../../lib/analysis/climatology';
+import { parseLocationFile } from '../../lib/coord/parseKml';
+import { findProvince } from '../../lib/coord/provinces';
 import type { RoadSurface } from '../../lib/types';
 
 /** Quy đổi góc khí tượng (từ đó gió thổi tới) → tên hướng tiếng Việt */
@@ -16,6 +19,8 @@ export function EnvParams() {
   const env                  = useSiteStore((s) => s.env);
   const setEnv               = useSiteStore((s) => s.setEnv);
   const mode                 = useSiteStore((s) => s.mode);
+  const kmzRef               = useRef<HTMLInputElement>(null);
+  const [kmzMsg, setKmzMsg]  = useState<string | null>(null);
   const showGrid             = useSiteStore((s) => s.showGrid);
   const toggleGrid           = useSiteStore((s) => s.toggleGrid);
   const slopeMode            = useSiteStore((s) => s.slopeMode);
@@ -31,6 +36,35 @@ export function EnvParams() {
   const hasRoads             = overlayLayers.some(l => l.isRoad);
   const hasTrees             = overlayLayers.some(l => l.isTree && (l.treePoints?.length ?? 0) > 0);
   const roadLayers           = overlayLayers.filter(l => l.isRoad && l.visible);
+
+  // Địa hình phẳng: Z biến thiên < 1m → cần baseMSL để hiển thị cao độ đúng
+  const isFlat = terrain
+    ? Math.abs(terrain.heightmap.maxZ - terrain.heightmap.minZ) < 1
+    : false;
+
+  /** Xử lý KMZ / KML upload để tự động đặt vị trí dự án */
+  const handleKmzFile = async (file: File) => {
+    setKmzMsg('Đang đọc file…');
+    try {
+      const loc = await parseLocationFile(file);
+      if (!loc) {
+        setKmzMsg('⚠ Không tìm thấy toạ độ trong file. Thử xuất KML từ Google Earth.');
+        return;
+      }
+      // lat/lon → province
+      const foundGeo = findProvince(loc.lat, loc.lon);
+      if (foundGeo) {
+        setGeoOverride(foundGeo.province);
+        setKmzMsg(`✓ Phát hiện: ${foundGeo.province} (${loc.lat.toFixed(3)}°N, ${loc.lon.toFixed(3)}°E)`);
+      } else {
+        // Không có tỉnh → ít nhất gán vĩ độ
+        setEnv({ latitude: Math.round(loc.lat * 10) / 10 });
+        setKmzMsg(`✓ Toạ độ: ${loc.lat.toFixed(3)}°N, ${loc.lon.toFixed(3)}°E (chưa xác định tỉnh)`);
+      }
+    } catch (e) {
+      setKmzMsg(`⚠ Lỗi: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   // Hiện style options khi đang ở mode contour HOẶC khi overlay bật
   const showContourStyle    = mode === 'contour' || showContourOverlay;
@@ -50,6 +84,34 @@ export function EnvParams() {
 
   return (
     <div className="space-y-3">
+
+      {/* ── Upload KMZ / KML để tự định vị dự án ── */}
+      <div className="space-y-1.5">
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold flex items-center gap-1">
+          <Navigation size={10} /> Định vị từ Google Earth (KMZ/KML)
+        </div>
+        <button
+          onClick={() => kmzRef.current?.click()}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-md text-xs
+                     font-bold uppercase bg-bg-card hover:bg-white/10 border border-white/10
+                     text-slate-400 hover:text-slate-200 transition"
+        >
+          📍 Tải file KMZ / KML
+        </button>
+        <input
+          ref={kmzRef} type="file" accept=".kmz,.kml,.KMZ,.KML" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleKmzFile(f); e.target.value = ''; }}
+        />
+        {kmzMsg && (
+          <div className={`text-[10px] leading-snug px-1 ${kmzMsg.startsWith('✓') ? 'text-accent-teal' : 'text-amber-400'}`}>
+            {kmzMsg}
+          </div>
+        )}
+        <div className="text-[9px] text-slate-600 leading-tight">
+          Export từ Google Earth Pro: File → Save Place As… → KMZ/KML
+        </div>
+      </div>
+
       <Slider label="Tháng"      value={env.month}         min={1}    max={12}  step={1}
         onChange={(v) => setEnv({ month: v })} />
       <Slider label="Giờ"        value={env.hour}          min={0}    max={23}  step={1}   suffix="h"
@@ -451,6 +513,34 @@ export function EnvParams() {
             min={10} max={100} step={5} suffix="%"
             onChange={(v) => setEnv({ contourOpacity: v / 100 })}
           />
+        </div>
+      )}
+
+      {/* ── Cao độ gốc (baseMSL) — luôn hiện khi có terrain ── */}
+      {terrain && (
+        <div className="pt-1 border-t border-white/5 space-y-2">
+          {isFlat && (
+            <div className="px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/30">
+              <div className="text-[10px] text-amber-300 font-semibold mb-0.5">
+                ⚠ Địa hình phẳng (Z ≈ 0)
+              </div>
+              <div className="text-[9px] text-amber-200/70 leading-tight">
+                File CAD chưa có cao độ thực. Nhập cao độ gốc để Legend và báo cáo
+                hiển thị đúng mực biển trung bình.
+              </div>
+            </div>
+          )}
+          <Slider
+            label="Cao độ gốc (MSL)"
+            value={env.baseMSL}
+            min={-10} max={2000} step={1} suffix="m"
+            onChange={(v) => setEnv({ baseMSL: v })}
+          />
+          {env.baseMSL !== 0 && (
+            <div className="text-[9px] text-slate-500 leading-tight pl-0.5">
+              Legend hiển thị: {(terrain.heightmap.minZ + env.baseMSL).toFixed(1)} – {(terrain.heightmap.maxZ + env.baseMSL).toFixed(1)} m MSL
+            </div>
+          )}
         </div>
       )}
 

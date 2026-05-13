@@ -1,7 +1,7 @@
 import { useSiteStore } from '../../store/useSiteStore';
 import { getSlopeClasses } from '../../lib/analysis/slope';
 import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
-import { buildElevationLegendItems } from '../../lib/analysis/elevationPalette';
+import { ELEV_PALETTE_HEX } from '../../lib/analysis/elevationPalette';
 import { RoadsLegend } from '../Scene/RoadsRender';
 import { LANDUSE_DISPLAY_COLOR, LANDUSE_LABEL } from '../../lib/dxf/parseLanduse';
 
@@ -9,7 +9,7 @@ export function Legend() {
   const mode    = useSiteStore((s) => s.mode);
   const terrain = useSiteStore((s) => s.terrain);
   const hide    = useSiteStore((s) => s.hideOverlay);
-  const contourInterval = useSiteStore((s) => s.env.contourInterval);
+  const baseMSL = useSiteStore((s) => s.env.baseMSL);
   const slopeMode = useSiteStore((s) => s.slopeMode);
   const showAllPeaks = useSiteStore((s) => s.showAllPeakElevations);
   const toggleAllPeaks = useSiteStore((s) => s.toggleAllPeakElevations);
@@ -24,14 +24,31 @@ export function Legend() {
   let title = '';
   switch (mode) {
     case 'elevation':
-    case 'contour':
-      title = mode === 'elevation' ? 'Phân tích cao độ' : 'Đường đồng mức';
+      title = 'Phân tích cao độ';
       content = (
         <ElevationSteps
-          min={terrain.heightmap.minZ}
-          max={terrain.heightmap.maxZ}
-          interval={contourInterval}
+          min={terrain.heightmap.minZ + baseMSL}
+          max={terrain.heightmap.maxZ + baseMSL}
         />
+      );
+      break;
+    case 'contour':
+      title = 'Đường đồng mức';
+      content = (
+        <div className="space-y-1.5 text-xs text-slate-200">
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-3 rounded-sm flex-shrink-0" style={{ background: '#d4cfc1' }} />
+            <span>Nền địa hình</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-0.5 rounded flex-shrink-0" style={{ background: '#22d3c5' }} />
+            <span>Đường đồng mức</span>
+          </div>
+          <div className="text-[10px] text-slate-500 pt-0.5">
+            Dải cao độ: {(terrain.heightmap.minZ + baseMSL).toFixed(1)} – {(terrain.heightmap.maxZ + baseMSL).toFixed(1)} m
+            {baseMSL !== 0 && <span className="text-accent-teal"> (+{baseMSL}m)</span>}
+          </div>
+        </div>
       );
       break;
     case 'slope':
@@ -233,10 +250,15 @@ function Swatches({ items }: { items: { color: string; label: string }[] }) {
   );
 }
 
-function ElevationSteps({
-  min, max, interval,
-}: { min: number; max: number; interval: number }) {
-  const items = buildElevationLegendItems(min, max, interval);
+function ElevationSteps({ min, max }: { min: number; max: number }) {
+  const range = max - min;
+  const steps = ELEV_PALETTE_HEX.length; // 10
+  // Build 10 items from high → low (palette index 9 = highest = last)
+  const items = ELEV_PALETTE_HEX.map((color, idx) => {
+    const zLow  = min + (idx / steps) * range;
+    const zHigh = min + ((idx + 1) / steps) * range;
+    return { color, label: `${zLow.toFixed(1)} – ${zHigh.toFixed(1)} m` };
+  });
   return (
     <div className="space-y-0.5 max-h-64 overflow-y-auto pr-1">
       {[...items].reverse().map((it) => (
@@ -248,6 +270,9 @@ function ElevationSteps({
           <span>{it.label}</span>
         </div>
       ))}
+      <div className="text-[9px] text-slate-500 pt-0.5 leading-tight">
+        Màu tương đối với địa hình (10 bước đều)
+      </div>
     </div>
   );
 }

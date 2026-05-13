@@ -36,7 +36,8 @@ export function sampleHeight(hm: Heightmap, worldX: number, worldZ: number): num
   const cx = (hm.width * hm.cellSize) / 2;
   const cy = (hm.height * hm.cellSize) / 2;
   const fx = (worldX + cx) / hm.cellSize;
-  const fz = (worldZ + cy) / hm.cellSize;
+  // Three.js Z = cy − (gridRow * cellSize)  →  gridRow = (cy − worldZ) / cellSize
+  const fz = (cy - worldZ) / hm.cellSize;
   const x = Math.max(0, Math.min(hm.width - 1, Math.round(fx)));
   const z = Math.max(0, Math.min(hm.height - 1, Math.round(fz)));
   return hm.data[z * hm.width + x];

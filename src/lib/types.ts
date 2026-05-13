@@ -237,4 +237,11 @@ export interface EnvParams {
   treeHeight: number;
   /** Hiển thị cây hiện trạng hay không */
   showTrees: boolean;
+  /**
+   * Cao độ gốc (mực nước biển trung bình, m).
+   * Dùng khi file CAD có Z = 0 (chưa có cao độ thực).
+   * Được cộng vào minZ/maxZ khi hiển thị legend và báo cáo.
+   * Không ảnh hưởng phân tích tương đối (độ dốc, thủy văn).
+   */
+  baseMSL: number;
 }

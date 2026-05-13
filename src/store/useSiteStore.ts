@@ -146,6 +146,7 @@ const DEFAULT_ENV: EnvParams = {
   useOriginalContours: true, // mặc định: trung thực với CAD gốc
   treeHeight: 8,             // chiều cao cây mặc định 8m
   showTrees: true,
+  baseMSL: 0,                // không dịch chuyển cao độ theo mặc định
 };
 
 export const useSiteStore = create<State>((set, get) => ({
