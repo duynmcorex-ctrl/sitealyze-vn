@@ -117,16 +117,62 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   }
 
   const userMatcher = buildLayerMatcher(layerPattern);
-  // Thử auto-detect: nếu file có layer match default pattern, chỉ lấy entity trong đó
+
+  // ── DATA-DRIVEN AUTO-DETECT ─────────────────────────────────────────────
+  // Bug cũ: regex name-match chọn nhầm layer "TLM_DongMuc_0" (chỉ 6 contour Z thật)
+  // thay vì "Level1" (416 contour Z thật, range 0-1810m) → mất dữ liệu địa hình.
+  //
+  // Fix: pre-scan tất cả polyline + group theo layer + chọn layer có nhiều Z THẬT
+  // nhất (data-driven). Fallback: regex name nếu không có layer nào có Z thật.
   let autoMatcher: ((layer?: string) => boolean) | null = null;
   if (!userMatcher) {
-    const layersWithZ = new Set<string>();
+    interface LayerStats { total: number; nonZero: number; minZ: number; maxZ: number; }
+    const layerStats = new Map<string, LayerStats>();
     for (const ent of dxf.entities) {
+      const t = (ent.type || '').toUpperCase();
+      if (t !== 'LWPOLYLINE' && t !== 'POLYLINE') continue;
       if (!ent.layer) continue;
-      if (DEFAULT_CONTOUR_LAYER_RE.test(ent.layer)) layersWithZ.add(ent.layer);
+      const z = pickElevation(ent.vertices?.[0]?.z, ent.elevation, ent.layer);
+      const s = layerStats.get(ent.layer) || { total: 0, nonZero: 0, minZ: Infinity, maxZ: -Infinity };
+      s.total++;
+      if (z !== null && Math.abs(z) > 0.001) {
+        s.nonZero++;
+        if (z < s.minZ) s.minZ = z;
+        if (z > s.maxZ) s.maxZ = z;
+      }
+      layerStats.set(ent.layer, s);
     }
-    if (layersWithZ.size > 0) {
-      autoMatcher = (layer?: string) => (layer ? layersWithZ.has(layer) : false);
+
+    // Score = nonZero × Z_range. Layer có nhiều polyline Z thật + range Z lớn = contour
+    let bestLayer = '';
+    let bestScore = 0;
+    const candidates: Array<[string, number, number, number]> = [];
+    for (const [layer, s] of layerStats) {
+      if (s.nonZero < 10) continue;
+      const range = s.maxZ - s.minZ;
+      if (range < 5) continue; // bỏ layer Z gần như 0
+      const score = s.nonZero * range;
+      candidates.push([layer, s.nonZero, range, score]);
+      if (score > bestScore) { bestScore = score; bestLayer = layer; }
+    }
+
+    if (bestLayer) {
+      console.log('[parseDxf] Auto-detect contour layers (data-driven):');
+      candidates.sort((a, b) => b[3] - a[3]).slice(0, 5).forEach(([l, n, r, s]) =>
+        console.log(`  ${l}: ${n} contour Z≠0, range=${r.toFixed(0)}m, score=${s.toFixed(0)}`)
+      );
+      console.log(`  → Chọn: "${bestLayer}"`);
+      autoMatcher = (layer?: string) => layer === bestLayer;
+    } else {
+      // Fallback: regex name-match (file genuinely flat hoặc không có layer Z thật)
+      const layersByName = new Set<string>();
+      for (const ent of dxf.entities) {
+        if (ent.layer && DEFAULT_CONTOUR_LAYER_RE.test(ent.layer)) layersByName.add(ent.layer);
+      }
+      if (layersByName.size > 0) {
+        console.log(`[parseDxf] Fallback name-match: ${[...layersByName].join(', ')}`);
+        autoMatcher = (layer?: string) => (layer ? layersByName.has(layer) : false);
+      }
     }
   }
   const layerOk = userMatcher || autoMatcher;
