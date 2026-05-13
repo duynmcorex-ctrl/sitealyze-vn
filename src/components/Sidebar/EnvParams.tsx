@@ -1,4 +1,4 @@
-import { Grid3x3, Layers, MapPin, Route, Trees, Wind, RotateCcw, Navigation } from 'lucide-react';
+import { Grid3x3, Layers, MapPin, Route, Trees, Wind, RotateCcw, Navigation, Wrench } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
 import type { SlopeClassMode } from '../../lib/analysis/slope';
@@ -21,6 +21,8 @@ export function EnvParams() {
   const mode                 = useSiteStore((s) => s.mode);
   const kmzRef               = useRef<HTMLInputElement>(null);
   const [kmzMsg, setKmzMsg]  = useState<string | null>(null);
+  const rebuildFlatTerrain   = useSiteStore((s) => s.rebuildFlatTerrain);
+  const loading              = useSiteStore((s) => s.loading);
   const showGrid             = useSiteStore((s) => s.showGrid);
   const toggleGrid           = useSiteStore((s) => s.toggleGrid);
   const slopeMode            = useSiteStore((s) => s.slopeMode);
@@ -37,10 +39,15 @@ export function EnvParams() {
   const hasTrees             = overlayLayers.some(l => l.isTree && (l.treePoints?.length ?? 0) > 0);
   const roadLayers           = overlayLayers.filter(l => l.isRoad && l.visible);
 
-  // Địa hình phẳng: Z biến thiên < 1m → cần baseMSL để hiển thị cao độ đúng
+  // Địa hình phẳng: Z biến thiên < 1m → cần tái tạo hoặc baseMSL
   const isFlat = terrain
     ? Math.abs(terrain.heightmap.maxZ - terrain.heightmap.minZ) < 1
     : false;
+
+  // State cho panel tái tạo địa hình
+  const [rebuildBase, setRebuildBase]           = useState(0);
+  const [rebuildInterval, setRebuildInterval]   = useState(5);
+  const [rebuildDir, setRebuildDir]             = useState<'hill' | 'basin'>('hill');
 
   /** Xử lý KMZ / KML upload để tự động đặt vị trí dự án */
   const handleKmzFile = async (file: File) => {
@@ -513,6 +520,101 @@ export function EnvParams() {
             min={10} max={100} step={5} suffix="%"
             onChange={(v) => setEnv({ contourOpacity: v / 100 })}
           />
+        </div>
+      )}
+
+      {/* ── Tái tạo địa hình 3D khi terrain phẳng ── */}
+      {terrain && isFlat && (
+        <div className="pt-1 border-t border-white/5 space-y-2">
+          <div className="px-2 py-1.5 rounded bg-orange-500/15 border border-orange-400/40">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Wrench size={11} className="text-orange-300 shrink-0" />
+              <span className="text-[10px] text-orange-300 font-bold uppercase tracking-wide">
+                Tái tạo địa hình 3D
+              </span>
+            </div>
+            <div className="text-[9px] text-orange-200/70 leading-tight mb-2">
+              File DWG không có cao độ Z. App sẽ sắp xếp {terrain.contours.length} đường
+              đồng mức theo vị trí không gian và gán cao độ tự động.
+            </div>
+
+            {/* Base elevation */}
+            <div className="space-y-1 mb-2">
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>Cao độ nền (m MSL)</span>
+                <span className="text-orange-300 font-mono">{rebuildBase} m</span>
+              </div>
+              <input type="range" className="slider"
+                value={rebuildBase} min={-10} max={2000} step={5}
+                onChange={(e) => setRebuildBase(parseFloat(e.target.value))} />
+              <div className="flex gap-1 flex-wrap">
+                {[0, 100, 500, 900, 1000, 1500].map(v => (
+                  <button key={v}
+                    onClick={() => setRebuildBase(v)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] border transition
+                      ${rebuildBase === v
+                        ? 'bg-orange-500/30 border-orange-400/60 text-orange-200'
+                        : 'bg-bg-card border-white/10 text-slate-500 hover:border-white/20'}`}
+                  >{v}m</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Contour interval */}
+            <div className="space-y-1 mb-2">
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>Khoảng đồng mức</span>
+                <span className="text-orange-300 font-mono">{rebuildInterval} m</span>
+              </div>
+              <input type="range" className="slider"
+                value={rebuildInterval} min={1} max={50} step={1}
+                onChange={(e) => setRebuildInterval(parseFloat(e.target.value))} />
+              <div className="flex gap-1">
+                {[1, 2, 5, 10, 20].map(v => (
+                  <button key={v}
+                    onClick={() => setRebuildInterval(v)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] border transition
+                      ${rebuildInterval === v
+                        ? 'bg-orange-500/30 border-orange-400/60 text-orange-200'
+                        : 'bg-bg-card border-white/10 text-slate-500 hover:border-white/20'}`}
+                  >{v}m</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Direction */}
+            <div className="flex gap-2 mb-2.5">
+              {(['hill', 'basin'] as const).map((d) => (
+                <button key={d}
+                  onClick={() => setRebuildDir(d)}
+                  className={`flex-1 py-1.5 rounded text-[10px] font-semibold border transition
+                    ${rebuildDir === d
+                      ? 'bg-orange-500/25 border-orange-400/60 text-orange-200'
+                      : 'bg-bg-card border-white/10 text-slate-400 hover:border-white/20'}`}
+                >
+                  {d === 'hill' ? '⛰ Đồi / Núi' : '🏞 Vùng trũng / Hồ'}
+                </button>
+              ))}
+            </div>
+
+            <button
+              disabled={loading}
+              onClick={() => rebuildFlatTerrain(rebuildBase, rebuildInterval, rebuildDir)}
+              className={`w-full py-2 rounded-md text-[11px] font-bold uppercase tracking-wide
+                          border transition flex items-center justify-center gap-2
+                          ${loading
+                            ? 'bg-bg-card border-white/10 text-slate-600 cursor-not-allowed'
+                            : 'bg-orange-500/20 border-orange-400/60 text-orange-200 hover:bg-orange-500/30'}`}
+            >
+              {loading
+                ? <><div className="w-3 h-3 border-2 border-orange-300 border-t-transparent rounded-full animate-spin" /> Đang xử lý…</>
+                : <><Wrench size={12} /> Tái tạo địa hình</>
+              }
+            </button>
+            <div className="text-[9px] text-slate-600 leading-tight mt-1">
+              Nếu địa hình bị lộn ngược → đổi chế độ Đồi↔Hồ rồi tái tạo lại.
+            </div>
+          </div>
         </div>
       )}
 

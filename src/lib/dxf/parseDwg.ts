@@ -194,20 +194,27 @@ export async function parseDwgBuffer(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entities: any[] = db.entities ?? [];
 
-  // ── DEBUG: dump cấu trúc 5 entity đầu để giúp chẩn đoán ─────────────────
-  // (chỉ active khi không có contour Z hợp lệ — xem bên dưới)
+  // ── DEBUG: dump cấu trúc entities để giúp chẩn đoán (KHÔNG dùng group/nesting) ─
   const _debugDump = () => {
-    console.group('[parseDwg] DEBUG DUMP — 5 entities đầu tiên');
-    entities.slice(0, 5).forEach((e, i) => {
-      console.log(`  [${i}] type=${e?.type} layer=${e?.layer}`, JSON.stringify(e).slice(0, 300));
-    });
+    console.log('=== [parseDwg] DEBUG DUMP ===');
     // Unique entity types
     const types = [...new Set(entities.map((e: any) => e?.type))].sort();
-    console.log('[parseDwg] Unique types:', types.join(', '));
+    console.log('[parseDwg] Unique entity types:', types.join(' | '));
     // Unique layers
     const layers = [...new Set(entities.map((e: any) => e?.layer))].filter(Boolean).sort();
-    console.log('[parseDwg] Unique layers:', layers.join(', '));
-    console.groupEnd();
+    console.log('[parseDwg] Unique layers:', layers.join(' | '));
+    // First LWPOLYLINE/POLYLINE2D entity — dump ALL keys để xem LibreDWG version
+    const firstPoly = entities.find((e: any) =>
+      e?.type === 'LWPOLYLINE' || e?.type === 'POLYLINE2D' || e?.type === 'POLYLINE3D'
+    );
+    if (firstPoly) {
+      console.log('[parseDwg] First polyline entity keys:', Object.keys(firstPoly).join(', '));
+      console.log('[parseDwg] First polyline data:', JSON.stringify(firstPoly).slice(0, 500));
+      // Kiểm tra từng vertex
+      const v0 = (firstPoly.vertices ?? [])[0];
+      if (v0) console.log('[parseDwg] First vertex keys:', Object.keys(v0).join(', '), '→', JSON.stringify(v0));
+    }
+    console.log('=== [parseDwg] END DUMP ===');
   };
 
   // ── Bước 3: xác định layer filter ────────────────────────────────────────
@@ -278,35 +285,69 @@ export async function parseDwgBuffer(
     // Layer filter
     if (layerOk && !layerOk.test(layer)) continue;
 
-    // ── LWPOLYLINE (Z = elevation field trên entity) ───────────────────────
+    // ── LWPOLYLINE (Z có thể ở .elevation, .z, per-vertex .z, hoặc extrusion) ─
     if (type === 'LWPOLYLINE') {
-      const elev: number = ent.elevation ?? 0;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const verts: any[] = ent.vertices ?? [];
+      const ea = ent as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const verts: any[] = ea.vertices ?? [];
       if (verts.length < 2) continue;
+
+      // Ưu tiên: per-vertex Z (LibreDWG đôi khi embed Z vào vertex dù LWPOLYLINE là 2D)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vertZs = verts.map((v: any) => (typeof v.z === 'number' ? v.z : 0));
+      const hasVertZ = vertZs.some(z => Math.abs(z) > 0.001);
+      let elev: number;
+      if (hasVertZ) {
+        const sorted = [...vertZs].sort((a, b) => a - b);
+        elev = sorted[Math.floor(sorted.length / 2)];
+      } else {
+        // Thử các field khác nhau của entity
+        const cands = [ea.elevation, ea.z, ea.extrusionPoint?.z]
+          .filter((v): v is number => typeof v === 'number' && v !== 0);
+        elev = cands[0] ?? 0;
+      }
+
       const points = verts.map((v: any) => ({ x: v.x ?? 0, y: v.y ?? 0 }));
       for (const p of points) trackBounds(p.x, p.y);
       if (elev < minZ) minZ = elev;
       if (elev > maxZ) maxZ = elev;
-      contours.push({ elevation: elev, points, layer, closed: !!(ent.flag & 1) });
+      contours.push({ elevation: elev, points, layer, closed: !!(ea.flag & 1) });
       pointCount += points.length;
       continue;
     }
 
-    // ── POLYLINE2D (elevation chung, vertices chỉ có X/Y) ─────────────────
+    // ── POLYLINE2D (elevation chung, có thể có per-vertex Z) ──────────────
     if (type === 'POLYLINE2D') {
-      const elev: number = ent.elevation ?? 0;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const verts: any[] = ent.vertices ?? [];
+      const ea2 = ent as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const verts: any[] = ea2.vertices ?? [];
       if (verts.length < 2) continue;
-      const points = verts
-        .filter((v: { flag?: number }) => { const f = v.flag ?? 0; return !(f & 64) && !(f & 16); })
-        .map((v: any) => ({ x: v.x ?? 0, y: v.y ?? 0 }));
-      if (points.length < 2) continue;
+      const filtVerts = verts.filter((v: { flag?: number }) => {
+        const f = v.flag ?? 0; return !(f & 64) && !(f & 16);
+      });
+      if (filtVerts.length < 2) continue;
+
+      // Kiểm tra per-vertex Z
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vZs = filtVerts.map((v: any) => (typeof v.z === 'number' ? v.z : 0));
+      const hasVZ = vZs.some((z: number) => Math.abs(z) > 0.001);
+      let elev: number;
+      if (hasVZ) {
+        const sorted = [...vZs].sort((a: number, b: number) => a - b);
+        elev = sorted[Math.floor(sorted.length / 2)];
+      } else {
+        const cands = [ea2.elevation, ea2.z]
+          .filter((v): v is number => typeof v === 'number' && v !== 0);
+        elev = cands[0] ?? 0;
+      }
+
+      const points = filtVerts.map((v: any) => ({ x: v.x ?? 0, y: v.y ?? 0 }));
       for (const p of points) trackBounds(p.x, p.y);
       if (elev < minZ) minZ = elev;
       if (elev > maxZ) maxZ = elev;
-      contours.push({ elevation: elev, points, layer, closed: !!(ent.flag & 1) });
+      contours.push({ elevation: elev, points, layer, closed: !!(ea2.flag & 1) });
       pointCount += points.length;
       continue;
     }
