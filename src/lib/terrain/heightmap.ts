@@ -33,10 +33,9 @@ export function rasterizeTinToHeightmap(
   const verts = tin.vertices;
   const tris = tin.triangles;
 
-  // ── Adaptive filter: dùng 95th percentile × 1.5 thay vì median × constant ──
-  // Lý do: median × 4 quá chặt với contour dày (median 5m → threshold 20m
-  // → drop valid bridge triangles ở vùng contour cách 30-80m → lỗ thủng).
-  // 95th percentile bắt được phân phối "normal triangles" tốt hơn.
+  // ── Adaptive filter rất rộng: chỉ drop convex-hull extreme outliers ──────
+  // Chiến lược: ƯU TIÊN không thủng lỗ trong terrain > không có rìa bịa.
+  // Dùng p99 × 2 để giữ HẦU HẾT tam giác hợp lệ, chỉ loại extreme outliers.
   const triLongestEdges: number[] = [];
   for (let t = 0; t < tris.length; t += 3) {
     const ai = tris[t] * 3, bi = tris[t + 1] * 3, ci = tris[t + 2] * 3;
@@ -51,9 +50,11 @@ export function rasterizeTinToHeightmap(
   triLongestEdges.sort((a, b) => a - b);
   const p50 = triLongestEdges[Math.floor(triLongestEdges.length * 0.50)] || 1;
   const p95 = triLongestEdges[Math.floor(triLongestEdges.length * 0.95)] || 1;
-  // 95th × 1.5: giữ phần lớn tam giác hợp lệ (kể cả bridge cách xa), drop convex-hull artifact
-  const edgeThreshold = p95 * 1.5;
-  console.log(`[heightmap] Adaptive filter: median=${p50.toFixed(1)}m, p95=${p95.toFixed(1)}m, threshold=${edgeThreshold.toFixed(1)}m`);
+  const p99 = triLongestEdges[Math.floor(triLongestEdges.length * 0.99)] || 1;
+  // p99 × 2: chỉ drop ~0.5-1% tam giác cực dài (convex hull extreme)
+  // → giữ TOÀN BỘ tam giác bridge hợp lệ trong lòng terrain → không thủng lỗ
+  const edgeThreshold = p99 * 2;
+  console.log(`[heightmap] Filter: median=${p50.toFixed(1)}m, p95=${p95.toFixed(1)}m, p99=${p99.toFixed(1)}m, threshold=${edgeThreshold.toFixed(1)}m`);
   let droppedTri = 0;
 
   for (let t = 0; t < tris.length; t += 3) {
@@ -108,27 +109,23 @@ export function rasterizeTinToHeightmap(
   // Lưu mask trước khi lấp — mask=1 nghĩa là cell đã được rasterize thực sự
   const mask = new Uint8Array(filled); // copy trước khi fillHoles thay đổi filled
 
-  // Dilate mask 1 cell để lấp lỗ thủng nhỏ từ triangle filter
-  // (không mở rộng nhiều — chỉ vá vài cell, không tạo terrain bịa lớn)
-  const dilated = new Uint8Array(mask);
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      const i = y * width + x;
-      if (mask[i]) continue;
-      // Nếu có ≥3 trong 8 láng giềng được fill → dilate (cell này là lỗ nhỏ giữa terrain)
-      let nbrFilled = 0;
-      if (mask[i - 1]) nbrFilled++;
-      if (mask[i + 1]) nbrFilled++;
-      if (mask[i - width]) nbrFilled++;
-      if (mask[i + width]) nbrFilled++;
-      if (mask[i - width - 1]) nbrFilled++;
-      if (mask[i - width + 1]) nbrFilled++;
-      if (mask[i + width - 1]) nbrFilled++;
-      if (mask[i + width + 1]) nbrFilled++;
-      if (nbrFilled >= 3) dilated[i] = 1;
+  // Aggressive mask dilation 2 passes — lấp triệt để lỗ thủng nhỏ trong terrain.
+  // Rule: cell rỗng → dilate nếu có ≥1 láng giềng (4-connected) đã filled.
+  // 2 passes = mở rộng tối đa 2 cell ra ngoài → ~8m trên grid 4m/cell.
+  // Trade-off: rìa terrain hơi extend vài cell, nhưng KHÔNG còn lỗ thủng interior.
+  for (let pass = 0; pass < 2; pass++) {
+    const next = new Uint8Array(mask);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (mask[i]) continue;
+        if (mask[i - 1] || mask[i + 1] || mask[i - width] || mask[i + width]) {
+          next[i] = 1;
+        }
+      }
     }
+    mask.set(next);
   }
-  mask.set(dilated);
 
   // Lấp các cell rỗng (rìa) bằng láng giềng gần nhất qua passes
   fillHoles(data, filled, width, height);
