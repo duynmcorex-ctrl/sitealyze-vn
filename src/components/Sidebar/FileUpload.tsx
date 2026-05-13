@@ -164,6 +164,16 @@ export function FileUpload() {
         }}
       />
       {fileName && <div className="mt-2 text-xs text-slate-400 truncate">{fileName}</div>}
+
+      {/* Khuyến nghị dùng DXF thay vì DWG */}
+      <div className="mt-2 px-2 py-1.5 rounded-md bg-sky-500/10 border border-sky-400/30">
+        <div className="text-[10px] text-sky-300 font-semibold">💡 Khuyến nghị: dùng DXF</div>
+        <div className="text-[9px] text-sky-200/80 leading-tight mt-0.5">
+          DXF giữ được cao độ Z và đường đồng mức gốc tốt hơn DWG.
+          Trong AutoCAD: <span className="font-mono">File → Save As → DXF (R2018)</span>
+        </div>
+      </div>
+
       <div className="mt-3">
         <label className="text-[10px] uppercase tracking-wider text-slate-500">
           Lọc layer (regex, để trống = auto)

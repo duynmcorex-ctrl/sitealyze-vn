@@ -277,19 +277,16 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   }
 
   // ── Tái tạo Z từ nhãn TEXT nếu terrain phẳng (tất cả Z≈0) ─────────────────
-  // Nhiều file CAD VN xuất contour tại Z=0, cao độ thực chỉ có trên nhãn TEXT.
   if (Math.abs(maxZ - minZ) < 1 && textLabels.length > 0) {
     const diag = Math.hypot(maxX - minX, maxY - minY);
     const updatedContours = assignElevationFromTextLabels(contours, textLabels, diag);
 
-    // Cập nhật lại minZ/maxZ từ contours đã gán text
     let newMinZ = Infinity, newMaxZ = -Infinity;
     for (const c of updatedContours) {
       if (c.elevation < newMinZ) newMinZ = c.elevation;
       if (c.elevation > newMaxZ) newMaxZ = c.elevation;
     }
     if (newMaxZ > newMinZ + 0.5) {
-      // TEXT labels đã gán được cao độ thực → dùng kết quả mới
       contours.length = 0;
       for (const c of updatedContours) contours.push(c);
       minZ = newMinZ;
@@ -298,15 +295,71 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     }
   }
 
+  // ── Tự động phát hiện OFFSET MSL từ TEXT labels khi Z range đã có ────────
+  // Nhiều file VN: contour có Z hợp lệ nhưng đã bị trừ base elevation
+  // (vd: thực tế 1380-1420m, lưu là 0-40m). TEXT labels là spot heights MSL thực.
+  if (maxZ > minZ + 1 && textLabels.length >= 5) {
+    // Match từng TEXT label với contour gần nhất (proximity 3% diag)
+    const maxDist2 = (Math.hypot(maxX - minX, maxY - minY) * 0.03) ** 2;
+    const offsets: number[] = [];
+    for (const lbl of textLabels) {
+      let bestDist2 = Infinity;
+      let bestContour: ContourPolyline | null = null;
+      for (const c of contours) {
+        for (let i = 0; i < c.points.length - 1; i++) {
+          const d2 = pt2segDist2(
+            lbl.x, lbl.y,
+            c.points[i].x, c.points[i].y,
+            c.points[i + 1].x, c.points[i + 1].y,
+          );
+          if (d2 < bestDist2) { bestDist2 = d2; bestContour = c; }
+        }
+      }
+      if (bestContour && bestDist2 <= maxDist2) {
+        offsets.push(lbl.value - bestContour.elevation);
+      }
+    }
+    if (offsets.length >= 5) {
+      // Median offset — robust với outlier
+      offsets.sort((a, b) => a - b);
+      const medianOffset = offsets[Math.floor(offsets.length / 2)];
+      // Variance check: offset có nhất quán không?
+      const dev = offsets.map(o => Math.abs(o - medianOffset)).sort((a, b) => a - b);
+      const madDev = dev[Math.floor(dev.length / 2)]; // median absolute deviation
+      const offsetSane = Math.abs(medianOffset) > 10 && madDev < 20;
+      if (offsetSane) {
+        console.log(
+          `[parseDxf] Phát hiện OFFSET MSL từ ${offsets.length} nhãn: +${medianOffset.toFixed(1)}m`,
+          `(MAD=${madDev.toFixed(1)}m)`,
+        );
+        // Áp offset vào tất cả contour
+        for (const c of contours) c.elevation += medianOffset;
+        minZ += medianOffset;
+        maxZ += medianOffset;
+        console.log(`[parseDxf] Z mới: ${minZ.toFixed(1)} – ${maxZ.toFixed(1)} m MSL`);
+      } else {
+        console.log(
+          `[parseDxf] Offset không nhất quán (median=${medianOffset.toFixed(1)}, MAD=${madDev.toFixed(1)})`,
+          `— giữ nguyên Z gốc`
+        );
+      }
+    }
+  }
+
   // Lọc outlier Z bằng IQR — loại bỏ các contour có cao độ bất thường
   // (thường do text/block/annotation bị đọc nhầm)
+  // Hệ số ×5 (rộng) thay vì ×3 (chặt) để giữ lại các contour ở rìa địa hình
+  // có cao độ thấp/cao bất thường nhưng vẫn hợp lệ (sườn dốc, đỉnh núi).
   const elevations = contours.map((c) => c.elevation).sort((a, b) => a - b);
   const q1 = elevations[Math.floor(elevations.length * 0.25)];
   const q3 = elevations[Math.floor(elevations.length * 0.75)];
   const iqr = q3 - q1;
-  const zLo = q1 - iqr * 3;
-  const zHi = q3 + iqr * 3;
+  const zLo = q1 - iqr * 5;
+  const zHi = q3 + iqr * 5;
   const filtered = contours.filter((c) => c.elevation >= zLo && c.elevation <= zHi);
+  if (filtered.length < contours.length) {
+    console.log(`[parseDxf] IQR filter: bỏ ${contours.length - filtered.length}/${contours.length} contour (Z<${zLo.toFixed(1)} hoặc Z>${zHi.toFixed(1)})`);
+  }
 
   // Cập nhật lại bounds Z sau khi lọc
   let realMinZ = Infinity, realMaxZ = -Infinity;

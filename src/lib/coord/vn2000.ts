@@ -106,17 +106,19 @@ export function vn2000ToLatLon(
 /** Bbox của Việt Nam (mở rộng 0.5° mỗi chiều để không bỏ sót biên giới) */
 const VN_BBOX = { minLat: 7.5, maxLat: 24.0, minLon: 101.5, maxLon: 110.5 };
 
-/** Các kinh tuyến trục VN-2000 phổ biến nhất (6° và 3° zones) */
+/** Các kinh tuyến trục VN-2000 phổ biến nhất (6°, 3°, và zone địa phương 1.5°) */
 const CANDIDATE_MERIDIANS: { meridian: number; k0: number; label: string }[] = [
-  { meridian: 105, k0: 0.9996, label: "105° (6° zone, quốc gia)" },
-  { meridian: 105, k0: 0.9999, label: "105° (3° zone)" },
+  { meridian: 105,   k0: 0.9996, label: "105° (6° zone, quốc gia)" },
+  { meridian: 105,   k0: 0.9999, label: "105° (3° zone)" },
   { meridian: 105.5, k0: 0.9999, label: "105°30' (3° zone)" },
-  { meridian: 106, k0: 0.9999, label: "106° (3° zone, miền Nam)" },
+  { meridian: 106,   k0: 0.9999, label: "106° (3° zone, miền Nam)" },
   { meridian: 107.5, k0: 0.9999, label: "107°30' (3° zone, đông VN)" },
-  { meridian: 108.5, k0: 0.9999, label: "108°30' (3° zone, Khánh Hoà)" },
+  { meridian: 107.75, k0: 0.9999, label: "107°45' (zone địa phương Lâm Đồng)" },
+  { meridian: 108.25, k0: 0.9999, label: "108°15' (zone địa phương Khánh Hoà)" },
+  { meridian: 108.5, k0: 0.9999, label: "108°30' (3° zone, ven biển Trung)" },
   { meridian: 104.5, k0: 0.9999, label: "104°30' (3° zone, tây VN)" },
-  { meridian: 103, k0: 0.9999, label: "103° (3° zone, Sơn La)" },
-  { meridian: 102, k0: 0.9999, label: "102° (3° zone, Lai Châu)" },
+  { meridian: 103,   k0: 0.9999, label: "103° (3° zone, Sơn La)" },
+  { meridian: 102,   k0: 0.9999, label: "102° (3° zone, Lai Châu)" },
 ];
 
 export interface DetectedZone {
@@ -125,26 +127,40 @@ export interface DetectedZone {
   label: string;
   lat: number;
   lon: number;
-  /** 0–1, càng cao càng tin: dựa trên |E - 500k| nhỏ + lat/lon nằm trong VN */
+  /** 0–1, càng cao càng tin */
   confidence: number;
+  /** Có thuộc một tỉnh nào không (đã verify với provinces.ts) */
+  matchedProvince?: string;
 }
 
+/** Bbox tỉnh để verify zone detection (subset của provinces.ts) */
+const PROVINCE_BBOXES: Array<{ name: string; minLat: number; maxLat: number; minLon: number; maxLon: number }> = [
+  // Các tỉnh có zone địa phương đặc biệt (108°+ lon)
+  { name: 'Lâm Đồng',   minLat: 10.3, maxLat: 12.8, minLon: 107.2, maxLon: 108.9 },
+  { name: 'Khánh Hoà',  minLat: 11.2, maxLat: 13.1, minLon: 108.4, maxLon: 109.5 },
+  { name: 'Đà Nẵng',    minLat: 14.8, maxLat: 16.2, minLon: 107.3, maxLon: 108.9 },
+  { name: 'Đồng Nai',   minLat: 10.5, maxLat: 12.4, minLon: 106.3, maxLon: 107.8 },
+];
+
 /**
- * Đoán kinh tuyến trục VN-2000 từ một điểm (E, N) — thử nhiều ứng viên,
- * chọn cái cho lat/lon nằm trong bbox Việt Nam và Easting gần 500k nhất.
+ * Đoán kinh tuyến trục VN-2000 từ một điểm (E, N).
  *
- * Hỗ trợ thêm:
- *  - Easting có tiền tố zone (> 1 000 000): tự bỏ tiền tố (vd 18500000 → 500000)
- *  - Toạ độ cực nhỏ (re-centered về gốc 0,0): trả null
+ * Thuật toán mới (sau bug Lâm Đồng → Đồng Nai):
+ *  1. Thử TẤT CẢ candidate meridians
+ *  2. Lọc lấy candidates có lat/lon nằm trong VN bbox
+ *  3. Ưu tiên candidate có lon CÁCH XA central meridian của mình ÍT NHẤT
+ *     (logic: zone đúng = file ở gần trục, sai zone = file đi xa khỏi trục)
+ *  4. Trong các candidate equal-tier, ưu tiên cái match được tên tỉnh
+ *
+ * BUG cũ: dùng confidence = lonCenter (gần CM của mình) làm tiêu chí chính
+ *   → zone SAI vẫn có thể có lon gần CM của zone đó, gây nhầm lẫn
  */
 export function detectVN2000Zone(easting: number, northing: number): DetectedZone | null {
-  // Bỏ qua file re-center về 0,0
   if (Math.abs(easting) < 1000 && Math.abs(northing) < 1000) return null;
 
   // Xử lý easting có tiền tố zone (vd 18500000, 19500000 → lấy 6 chữ số cuối)
   let e = easting;
   if (e > 1_000_000) {
-    // Thử bỏ tiền tố: giữ lại phần sau khi chia cho 10^n sao cho 100000 < e < 900000
     let tmp = e;
     while (tmp > 900_000) tmp = tmp % 1_000_000;
     if (tmp > 100_000 && tmp < 900_000) e = tmp;
@@ -162,10 +178,17 @@ export function detectVN2000Zone(easting: number, northing: number): DetectedZon
       lon >= VN_BBOX.minLon && lon <= VN_BBOX.maxLon;
     if (!inVN) continue;
 
-    // Confidence: càng gần 500k easting + càng gần kinh tuyến trục lon càng tốt
+    // Tìm tỉnh match
+    const province = PROVINCE_BBOXES.find(p =>
+      lat >= p.minLat && lat <= p.maxLat && lon >= p.minLon && lon <= p.maxLon
+    );
+
+    // Confidence: ưu tiên (1) match tỉnh, (2) easting gần 500k (file CAD ít khi xa trục >100km)
+    const provinceBonus = province ? 0.5 : 0;
     const easCenter = 1 - Math.min(1, Math.abs(e - 500000) / 200000);
-    const lonCenter = 1 - Math.min(1, Math.abs(lon - c.meridian) / 1.5);
-    const confidence = (easCenter * 0.4 + lonCenter * 0.6);
+    // Nếu lon nằm trong khoảng 3° của CM (±1.5°), zone hợp lý
+    const lonInZone = Math.abs(lon - c.meridian) <= 1.5 ? 0.3 : 0;
+    const confidence = provinceBonus + easCenter * 0.2 + lonInZone;
 
     candidates.push({
       centralMeridian: c.meridian,
@@ -174,10 +197,23 @@ export function detectVN2000Zone(easting: number, northing: number): DetectedZon
       lat,
       lon,
       confidence,
+      matchedProvince: province?.name,
     });
   }
 
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => b.confidence - a.confidence);
+
+  // Debug: log top 3 candidates để dễ chẩn đoán
+  console.log('[VN2000] Top 3 candidates:',
+    candidates.slice(0, 3).map(c => ({
+      meridian: c.centralMeridian,
+      lat: c.lat.toFixed(3),
+      lon: c.lon.toFixed(3),
+      province: c.matchedProvince ?? '(không match)',
+      conf: c.confidence.toFixed(2),
+    }))
+  );
+
   return candidates[0];
 }
