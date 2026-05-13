@@ -298,6 +298,31 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     }
   }
 
+  // ❌ KHÔNG tự ý sửa cao độ MSL — giữ ĐÚNG Z từ CAD.
+  // Nếu Z file là relative (0-360m thay vì 1380-1420m), user dùng "Cao độ gốc (MSL)"
+  // để dịch hiển thị, KHÔNG đổi dữ liệu gốc.
+
+  // ── Tách contour Z=0 vs contour có Z thật khi mix giữa flat + có Z ──────
+  // Bug case: file có 800 contour Z=0 (lớp annotation/frame draft) + 271 contour
+  // có Z thật (50-360m) → IQR filter cũ với iqr=0 sẽ FILTER MẤT 271 contour có Z thật
+  // → terrain phẳng + thiếu vùng đó. Fix: nếu majority ở Z=0 nhưng có nhóm khác
+  // với Z thật, ƯU TIÊN nhóm có Z thật.
+  const zeroCount = contours.filter(c => Math.abs(c.elevation) < 0.001).length;
+  const nonZeroCount = contours.length - zeroCount;
+  if (zeroCount > 0 && nonZeroCount >= 10) {
+    // Có cả 2 nhóm — ưu tiên giữ nhóm có Z thật, BỎ contour Z=0 (draft/annotation)
+    const realContours = contours.filter(c => Math.abs(c.elevation) >= 0.001);
+    console.log(`[parseDxf] Mixed Z: bỏ ${zeroCount} contour Z=0 (draft), giữ ${nonZeroCount} contour có Z thật`);
+    contours.length = 0;
+    for (const c of realContours) contours.push(c);
+    // Cập nhật minZ/maxZ
+    minZ = Infinity; maxZ = -Infinity;
+    for (const c of contours) {
+      if (c.elevation < minZ) minZ = c.elevation;
+      if (c.elevation > maxZ) maxZ = c.elevation;
+    }
+  }
+
   // ── Nếu sau tái tạo Z vẫn phẳng (< 0.5m) → throw error rõ ràng ──────────
   // Không có Z trong file + không có TEXT match được → không thể tạo địa hình 3D
   if (Math.abs(maxZ - minZ) < 0.5) {
@@ -310,22 +335,26 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     );
   }
 
-  // ❌ KHÔNG tự ý sửa cao độ MSL — giữ ĐÚNG Z từ CAD.
-  // Nếu Z file là relative (0-360m thay vì 1380-1420m), user dùng "Cao độ gốc (MSL)"
-  // để dịch hiển thị, KHÔNG đổi dữ liệu gốc.
-
   // Lọc outlier Z bằng IQR — loại bỏ các contour có cao độ bất thường
   // (thường do text/block/annotation bị đọc nhầm thành contour, ví dụ Z=9999, Z=-100)
-  // ×4 vừa: chặt hơn ×5 (vẫn lọc được noise rõ), nhưng giữ contour rìa hợp lệ.
+  // CHỈ chạy khi IQR đủ lớn — nếu iqr quá nhỏ, skip để tránh filter sai (bug iqr=0)
   const elevations = contours.map((c) => c.elevation).sort((a, b) => a - b);
   const q1 = elevations[Math.floor(elevations.length * 0.25)];
   const q3 = elevations[Math.floor(elevations.length * 0.75)];
   const iqr = q3 - q1;
-  const zLo = q1 - iqr * 4;
-  const zHi = q3 + iqr * 4;
-  const filtered = contours.filter((c) => c.elevation >= zLo && c.elevation <= zHi);
-  if (filtered.length < contours.length) {
-    console.log(`[parseDxf] IQR filter: bỏ ${contours.length - filtered.length}/${contours.length} contour (Z<${zLo.toFixed(1)} hoặc Z>${zHi.toFixed(1)})`);
+  let filtered: ContourPolyline[];
+  if (iqr > 1) {
+    // IQR đủ rõ → filter outlier bằng ×4 IQR
+    const zLo = q1 - iqr * 4;
+    const zHi = q3 + iqr * 4;
+    filtered = contours.filter((c) => c.elevation >= zLo && c.elevation <= zHi);
+    if (filtered.length < contours.length) {
+      console.log(`[parseDxf] IQR filter: bỏ ${contours.length - filtered.length}/${contours.length} contour (Z<${zLo.toFixed(1)} hoặc Z>${zHi.toFixed(1)})`);
+    }
+  } else {
+    // IQR quá nhỏ (data clustered) → skip filter, giữ toàn bộ
+    console.log(`[parseDxf] IQR=${iqr.toFixed(2)} quá nhỏ — skip filter, giữ toàn bộ ${contours.length} contour`);
+    filtered = contours;
   }
 
   // Cập nhật lại bounds Z sau khi lọc
