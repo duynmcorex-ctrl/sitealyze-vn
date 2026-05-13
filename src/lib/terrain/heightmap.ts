@@ -47,11 +47,11 @@ export function rasterizeTinToHeightmap(
     const triMaxY = Math.max(ay, by, cy);
 
     // Bỏ qua tam giác artifact Delaunay cực dài (nối 2 điểm xa nhau qua vùng trống lớn).
-    // Tăng 0.08 → 0.25 → 0.40 để vùng có contour thưa (rìa địa hình) vẫn được phủ.
-    // Trade-off: tam giác hơi dài có thể tạo facet ở vùng trống thực sự, nhưng tốt hơn
-    // là CẮT MẤT NỬA bản đồ (vấn đề người dùng gặp với Hồ Tuyền Lâm).
+    // Tham số 0.15: cân bằng giữa "lấp đủ vùng có contour thưa" và "KHÔNG tạo địa hình ảo
+    // ở vùng trống thật sự". Anh KTS yêu cầu giữ nguyên hiện trạng — thà thiếu một vài
+    // mảng nhỏ còn hơn fabricate địa hình.
     const longEdge = Math.max(triMaxX - triMinX, triMaxY - triMinY);
-    if (longEdge > Math.max(w, h) * 0.40) continue;
+    if (longEdge > Math.max(w, h) * 0.15) continue;
 
     const x0 = Math.max(0, Math.floor((triMinX - bounds.minX) / cellSize));
     const x1 = Math.min(width - 1, Math.ceil((triMaxX - bounds.minX) / cellSize));

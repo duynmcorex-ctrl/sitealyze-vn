@@ -133,29 +133,47 @@ export interface DetectedZone {
   matchedProvince?: string;
 }
 
-/** Bbox tỉnh để verify zone detection (subset của provinces.ts) */
-const PROVINCE_BBOXES: Array<{ name: string; minLat: number; maxLat: number; minLon: number; maxLon: number }> = [
-  // Các tỉnh có zone địa phương đặc biệt (108°+ lon)
-  { name: 'Lâm Đồng',   minLat: 10.3, maxLat: 12.8, minLon: 107.2, maxLon: 108.9 },
+/** Bbox tỉnh + flag highland để verify zone detection */
+const PROVINCE_BBOXES: Array<{
+  name: string;
+  minLat: number; maxLat: number; minLon: number; maxLon: number;
+  /** true = vùng cao (Tây Nguyên + miền núi), Z MSL > 500m điển hình */
+  highland?: boolean;
+}> = [
+  // Vùng cao (Tây Nguyên + miền núi)
+  { name: 'Lâm Đồng',   minLat: 10.3, maxLat: 12.8, minLon: 107.2, maxLon: 108.9, highland: true },
+  { name: 'Đắk Lắk',    minLat: 11.8, maxLat: 13.7, minLon: 107.5, maxLon: 109.6, highland: true },
+  { name: 'Gia Lai',    minLat: 12.8, maxLat: 14.6, minLon: 107.4, maxLon: 109.5, highland: true },
+  { name: 'Sơn La',     minLat: 20.5, maxLat: 21.8, minLon: 103.2, maxLon: 105.0, highland: true },
+  { name: 'Điện Biên',  minLat: 20.7, maxLat: 22.6, minLon: 102.1, maxLon: 103.6, highland: true },
+  { name: 'Lai Châu',   minLat: 21.7, maxLat: 22.9, minLon: 102.1, maxLon: 103.6, highland: true },
+  { name: 'Lào Cai',    minLat: 21.4, maxLat: 22.9, minLon: 103.3, maxLon: 105.0, highland: true },
+  // Vùng thấp / đồng bằng / ven biển
   { name: 'Khánh Hoà',  minLat: 11.2, maxLat: 13.1, minLon: 108.4, maxLon: 109.5 },
   { name: 'Đà Nẵng',    minLat: 14.8, maxLat: 16.2, minLon: 107.3, maxLon: 108.9 },
   { name: 'Đồng Nai',   minLat: 10.5, maxLat: 12.4, minLon: 106.3, maxLon: 107.8 },
+  { name: 'Tây Ninh',   minLat: 10.3, maxLat: 11.9, minLon: 105.5, maxLon: 106.8 },
+  { name: 'TP.HCM',     minLat: 10.2, maxLat: 11.5, minLon: 106.3, maxLon: 107.0 },
 ];
 
 /**
  * Đoán kinh tuyến trục VN-2000 từ một điểm (E, N).
  *
- * Thuật toán mới (sau bug Lâm Đồng → Đồng Nai):
- *  1. Thử TẤT CẢ candidate meridians
- *  2. Lọc lấy candidates có lat/lon nằm trong VN bbox
- *  3. Ưu tiên candidate có lon CÁCH XA central meridian của mình ÍT NHẤT
- *     (logic: zone đúng = file ở gần trục, sai zone = file đi xa khỏi trục)
- *  4. Trong các candidate equal-tier, ưu tiên cái match được tên tỉnh
+ * Nhận thêm hint:
+ *  - elevationHint: cao độ Z MSL trung bình của file (nếu có) — Z > 500m chắc chắn
+ *    là vùng cao (Tây Nguyên, miền núi), KHÔNG thể là Tây Ninh/Đồng Nai/TPHCM (vùng thấp).
  *
- * BUG cũ: dùng confidence = lonCenter (gần CM của mình) làm tiêu chí chính
- *   → zone SAI vẫn có thể có lon gần CM của zone đó, gây nhầm lẫn
+ * Thuật toán:
+ *  1. Thử mọi candidate, lọc cái nằm trong VN bbox
+ *  2. Boost mạnh nếu lat/lon match một tỉnh trong PROVINCE_BBOXES
+ *  3. Boost thêm nếu province khớp với elevationHint (highland vs lowland)
+ *  4. Ưu tiên ZONE NHỎ (1.5° local) hơn 3° hơn 6° khi tied (precision)
  */
-export function detectVN2000Zone(easting: number, northing: number): DetectedZone | null {
+export function detectVN2000Zone(
+  easting: number,
+  northing: number,
+  hint?: { elevationHint?: number }
+): DetectedZone | null {
   if (Math.abs(easting) < 1000 && Math.abs(northing) < 1000) return null;
 
   // Xử lý easting có tiền tố zone (vd 18500000, 19500000 → lấy 6 chữ số cuối)
@@ -183,12 +201,32 @@ export function detectVN2000Zone(easting: number, northing: number): DetectedZon
       lat >= p.minLat && lat <= p.maxLat && lon >= p.minLon && lon <= p.maxLon
     );
 
-    // Confidence: ưu tiên (1) match tỉnh, (2) easting gần 500k (file CAD ít khi xa trục >100km)
-    const provinceBonus = province ? 0.5 : 0;
-    const easCenter = 1 - Math.min(1, Math.abs(e - 500000) / 200000);
-    // Nếu lon nằm trong khoảng 3° của CM (±1.5°), zone hợp lý
-    const lonInZone = Math.abs(lon - c.meridian) <= 1.5 ? 0.3 : 0;
-    const confidence = provinceBonus + easCenter * 0.2 + lonInZone;
+    let confidence = 0;
+
+    // (1) Province match: tín hiệu mạnh nhất
+    if (province) confidence += 1.0;
+
+    // (2) ELEVATION HINT — quan trọng nhất khi phân biệt Đồng Nai vs Lâm Đồng:
+    //     Z > 500m → highland (Lâm Đồng, Đắk Lắk, Sơn La...). Nếu province match
+    //     không phải highland → mismatch nghiêm trọng → trừ điểm rất nặng.
+    if (province && hint?.elevationHint != null) {
+      const z = hint.elevationHint;
+      if (z > 500 && !province.highland) confidence -= 1.5;   // lowland match cho file cao
+      if (z > 1000 && province.highland) confidence += 0.8;  // bonus cho highland đúng cao
+      if (z < 200 && province.highland) confidence -= 0.5;   // highland match cho file thấp
+    }
+
+    // (3) Zone precision: 1.5° local > 3° > 6°
+    //     Files chuyên nghiệp (1:5000 topo) thường dùng local zone
+    const isLocalZone = c.meridian % 1 !== 0 && c.meridian !== 105.5; // 107.75, 108.25
+    const is6Zone = c.k0 === 0.9996;
+    const zoneScore = isLocalZone ? 0.3 : (is6Zone ? 0 : 0.15);
+    confidence += zoneScore;
+
+    // (4) Easting trong vùng hợp lý (file CAD ít khi xa trục > 150km)
+    const easOffset = Math.abs(e - 500000);
+    if (easOffset < 80000) confidence += 0.2;
+    else if (easOffset > 200000) confidence -= 0.3;
 
     candidates.push({
       centralMeridian: c.meridian,

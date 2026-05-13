@@ -219,8 +219,10 @@ export const useSiteStore = create<State>((set, get) => ({
     try {
       const cx = (t.bounds.minX + t.bounds.maxX) / 2;
       const cy = (t.bounds.minY + t.bounds.maxY) / 2;
-      console.log('[VN2000] bounds center:', cx.toFixed(2), cy.toFixed(2));
-      const zone = detectVN2000Zone(cx, cy);
+      // Hint: cao độ trung bình từ file — Z > 500m gợi ý vùng cao (Tây Nguyên/núi)
+      const zMid = (t.bounds.minZ + t.bounds.maxZ) / 2;
+      console.log('[VN2000] bounds center:', cx.toFixed(2), cy.toFixed(2), 'Z mid:', zMid.toFixed(1));
+      const zone = detectVN2000Zone(cx, cy, { elevationHint: zMid });
       console.log('[VN2000] detected zone:', zone);
       if (zone) {
         geo = findProvince(zone.lat, zone.lon);
