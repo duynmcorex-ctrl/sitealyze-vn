@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useSiteStore } from '../../store/useSiteStore';
 import { getSlopeClasses } from '../../lib/analysis/slope';
 import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
-import { ELEV_PALETTE_RGB, elevPaletteIndex } from '../../lib/analysis/elevationPalette';
+import { ELEV_PALETTE_RGB, ELEV_PALETTE_SMALL_RGB, SMALL_RANGE_THRESHOLD_M, elevPaletteIndex } from '../../lib/analysis/elevationPalette';
 import { ThreeEvent } from '@react-three/fiber';
 
 export function TerrainMesh() {
@@ -50,9 +50,13 @@ export function TerrainMesh() {
         // Địa hình phẳng — màu xám nhạt trung tính, không dùng gradient giả
         for (let i = 0; i < n; i++) setColor(i, '#94a3b8');
       } else {
+        // Dải cao độ nhỏ (<10m): dùng palette đất tự nhiên (xanh–nâu) thay vì blue→red
+        // để tránh ảo giác địa hình có chênh lệch lớn
+        const range = hm.maxZ - hm.minZ;
+        const palette = range < SMALL_RANGE_THRESHOLD_M ? ELEV_PALETTE_SMALL_RGB : ELEV_PALETTE_RGB;
         for (let i = 0; i < n; i++) {
           const idx = elevPaletteIndex(hm.data[i], hm.minZ, hm.maxZ);
-          const [r, g, b] = ELEV_PALETTE_RGB[idx];
+          const [r, g, b] = palette[idx];
           colors[i * 3] = r;
           colors[i * 3 + 1] = g;
           colors[i * 3 + 2] = b;

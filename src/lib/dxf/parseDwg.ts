@@ -17,6 +17,59 @@
 import type { ParsedDxf, ContourPolyline, RawRoadPolyline } from '../types';
 import { ROAD_LAYER_RE } from '../analysis/roads';
 
+// ── Helpers tái tạo Z từ nhãn TEXT (giống parseDxf.ts) ──────────────────────
+
+/** Thử parse giá trị số từ text CAD */
+function parseNumericTextDwg(raw: string): number | null {
+  if (!raw) return null;
+  const clean = raw.replace(/\\[A-Za-z][^;]*;|[{}\\]|\\P/g, '').trim();
+  const m = clean.match(/^(-?\d+(?:[.,]\d+)?)$/);
+  if (!m) return null;
+  const v = parseFloat(m[1].replace(',', '.'));
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Khoảng cách bình phương từ điểm đến đoạn thẳng (2D) */
+function pt2seg2Dwg(px: number, py: number,
+                   ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-12) return (px - ax) ** 2 + (py - ay) ** 2;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2;
+}
+
+/**
+ * Gán cao độ từ nhãn TEXT gần nhất cho mỗi contour polyline (khi Z=0).
+ * Cùng thuật toán với parseDxf.ts — max dist = 5% đường chéo terrain.
+ */
+function assignElevFromLabels(
+  contours: ContourPolyline[],
+  labels: { x: number; y: number; value: number }[],
+  diag: number,
+): ContourPolyline[] {
+  if (labels.length === 0) return contours;
+  const maxDist2 = (diag * 0.05) ** 2;
+  return contours.map((c) => {
+    let bestDist2 = Infinity;
+    let bestVal: number | null = null;
+    for (const lbl of labels) {
+      for (let i = 0; i < c.points.length - 1; i++) {
+        const d2 = pt2seg2Dwg(lbl.x, lbl.y,
+          c.points[i].x, c.points[i].y,
+          c.points[i + 1].x, c.points[i + 1].y);
+        if (d2 < bestDist2) { bestDist2 = d2; bestVal = lbl.value; }
+      }
+      if (c.points.length === 1) {
+        const d2 = (lbl.x - c.points[0].x) ** 2 + (lbl.y - c.points[0].y) ** 2;
+        if (d2 < bestDist2) { bestDist2 = d2; bestVal = lbl.value; }
+      }
+    }
+    if (bestVal !== null && bestDist2 <= maxDist2) return { ...c, elevation: bestVal };
+    return c;
+  });
+}
+
 // ── Layer pattern auto-detect (giống parseDxf.ts) ────────────────────────────
 const DEFAULT_CONTOUR_LAYER_RE =
   /(DM|DC|DG|DONGMUC|DUONG[_-]?DONG[_-]?MUC|CONTOUR|TOPO|ELEV|TERRAIN|HEIGHT|BINHDO)/i;
@@ -85,6 +138,8 @@ export async function parseDwgBuffer(
 
   // ── Bước 4: extract contour polylines + road polylines ───────────────────
   const contours: ContourPolyline[] = [];
+  /** TEXT / MTEXT có giá trị số — dùng để tái tạo Z khi terrain phẳng */
+  const textLabels: { x: number; y: number; value: number }[] = [];
   let minX = Infinity, minY = Infinity;
   let maxX = -Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
@@ -109,6 +164,23 @@ export async function parseDwgBuffer(
   for (const ent of entities) {
     const type: string = ent?.type ?? '';
     const layer: string = ent?.layer ?? '';
+
+    // ── Thu thập nhãn TEXT / MTEXT có giá trị số (cao độ) ───────────────────
+    if (type === 'TEXT' || type === 'MTEXT') {
+      // LibreDWG: .text hoặc .textString
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: string = (ent as any).text ?? (ent as any).textString ?? '';
+      const val = parseNumericTextDwg(raw);
+      if (val !== null) {
+        // Vị trí: insertionPoint hoặc position hoặc point
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pos = (ent as any).insertionPoint ?? (ent as any).position ?? (ent as any).point;
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+          textLabels.push({ x: pos.x, y: pos.y, value: val });
+        }
+      }
+      continue; // TEXT không tạo contour
+    }
 
     // ── Road detection: CHỈ chạy nếu layer KHÔNG phải contour layer ────────
     // Defense-in-depth: ưu tiên contour nếu match cả 2 pattern.
@@ -240,6 +312,25 @@ export async function parseDwgBuffer(
       if (z > maxZ) maxZ = z;
       contours.push({ elevation: z, points: pts, layer });
       pointCount += 2;
+    }
+  }
+
+  // ── Bước 4b: tái tạo Z từ nhãn TEXT nếu terrain phẳng (Z≈0) ────────────────
+  if (Math.abs(maxZ - minZ) < 1 && textLabels.length > 0) {
+    console.log(`[parseDwg] Phát hiện ${textLabels.length} nhãn TEXT — thử tái tạo Z...`);
+    const diag = Math.hypot(maxX - minX, maxY - minY);
+    const updated = assignElevFromLabels(contours, textLabels, diag);
+    let newMinZ = Infinity, newMaxZ = -Infinity;
+    for (const c of updated) {
+      if (c.elevation < newMinZ) newMinZ = c.elevation;
+      if (c.elevation > newMaxZ) newMaxZ = c.elevation;
+    }
+    if (newMaxZ > newMinZ + 0.5) {
+      contours.length = 0;
+      for (const c of updated) contours.push(c);
+      minZ = newMinZ;
+      maxZ = newMaxZ;
+      console.log(`[parseDwg] Tái tạo Z từ TEXT: ${newMinZ.toFixed(1)} – ${newMaxZ.toFixed(1)} m`);
     }
   }
 

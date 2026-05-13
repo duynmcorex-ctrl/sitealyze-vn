@@ -1,7 +1,7 @@
 import { useSiteStore } from '../../store/useSiteStore';
 import { getSlopeClasses } from '../../lib/analysis/slope';
 import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
-import { ELEV_PALETTE_HEX } from '../../lib/analysis/elevationPalette';
+import { ELEV_PALETTE_HEX, ELEV_PALETTE_SMALL_HEX, SMALL_RANGE_THRESHOLD_M } from '../../lib/analysis/elevationPalette';
 import { RoadsLegend } from '../Scene/RoadsRender';
 import { LANDUSE_DISPLAY_COLOR, LANDUSE_LABEL } from '../../lib/dxf/parseLanduse';
 
@@ -270,8 +270,11 @@ function ElevationSteps({ min, max }: { min: number; max: number }) {
     );
   }
 
+  // Địa hình có dải cao độ nhỏ (<10m): dùng palette đất tự nhiên, thêm note
+  const palette = range < SMALL_RANGE_THRESHOLD_M ? ELEV_PALETTE_SMALL_HEX : ELEV_PALETTE_HEX;
+
   // Build 10 items matching mesh vertex colors
-  const items = ELEV_PALETTE_HEX.map((color, idx) => {
+  const items = palette.map((color, idx) => {
     const zLow  = min + (idx / steps) * range;
     const zHigh = min + ((idx + 1) / steps) * range;
     return { color, label: `${zLow.toFixed(1)} – ${zHigh.toFixed(1)} m` };
@@ -289,6 +292,11 @@ function ElevationSteps({ min, max }: { min: number; max: number }) {
       ))}
       <div className="text-[9px] text-slate-500 pt-0.5 leading-tight">
         Màu tương đối trong phạm vi địa hình
+        {range < SMALL_RANGE_THRESHOLD_M && (
+          <span className="block text-amber-400/70 mt-0.5">
+            ⚡ Dải cao độ nhỏ ({range.toFixed(1)} m) — dùng tông xanh–nâu
+          </span>
+        )}
       </div>
     </div>
   );
