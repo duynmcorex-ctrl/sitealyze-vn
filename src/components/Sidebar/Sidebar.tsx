@@ -8,6 +8,7 @@ import { LayerPanel } from './LayerPanel';
 import { LandusePanel } from './LandusePanel';
 import { ProjectsPanel } from './ProjectsPanel';
 import { ProjectInfoPanel } from './ProjectInfoPanel';
+import { ClimatePanel } from './ClimatePanel';
 import { useSiteStore } from '../../store/useSiteStore';
 
 export function Sidebar() {
@@ -39,10 +40,13 @@ export function Sidebar() {
         <Section title="7. Quy hoạch sử dụng đất">
           <LandusePanel />
         </Section>
-        <Section title="8. Công cụ điểm nhìn">
+        <Section title="8. Phân tích Khí hậu & Bố trí chức năng">
+          <ClimatePanel />
+        </Section>
+        <Section title="9. Công cụ điểm nhìn">
           <ViewpointTool />
         </Section>
-        <Section title="9. Báo cáo phân tích">
+        <Section title="10. Báo cáo phân tích">
           <button
             onClick={() => generateRpt()}
             disabled={!terrain || reportLoading}
@@ -62,7 +66,7 @@ export function Sidebar() {
             <p className="text-[10px] text-slate-600 text-center">Tải file DXF trước để kích hoạt</p>
           )}
         </Section>
-        <Section title="10. Xuất dữ liệu">
+        <Section title="11. Xuất dữ liệu">
           <ExportPanel />
         </Section>
       </div>

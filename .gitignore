@@ -4,3 +4,5 @@ dist
 *.local
 .DS_Store
 *.tsbuildinfo
+# Snapshots phiên bản (chỉ giữ README, không commit file build)
+versions/v*/

@@ -16,7 +16,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useSiteStore } from '../../store/useSiteStore';
 import { detectVN2000Zone, vn2000ToLatLon } from '../../lib/coord/vn2000';
 import type { VN2000Options } from '../../lib/coord/vn2000';
-import { School, Hospital, Building2, ShoppingBag, Droplets, X, Layers, RefreshCw, Mountain, Box } from 'lucide-react';
+import { School, Hospital, Building2, ShoppingBag, Droplets, X, Layers, RefreshCw, Mountain, Box, Palette, Waves } from 'lucide-react';
+import { buildElevationHeatmapDataURL, buildFloodDataURL, getElevHeatmapColor } from '../../lib/render/elevationHeatmapImage';
 
 // ── OSM POI layer definitions ──────────────────────────────────────────────
 interface PoiLayer {
@@ -161,6 +162,16 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
   const [baseStyle, setBaseStyle]   = useState<'satellite' | 'map'>('satellite');
   const [pitch, setPitch]           = useState(0);
   const [terrain3D, setTerrain3D]   = useState(false);
+  const [showElevHeatmap, setShowElevHeatmap] = useState(false);
+  const [showFlood, setShowFlood]   = useState(false);
+  const [waterLevel, setWaterLevel] = useState<number>(0);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
+
+  // Init waterLevel = minZ của terrain (để slider bắt đầu ở đáy terrain)
+  useEffect(() => {
+    if (terrain && waterLevel === 0) setWaterLevel(Math.round(terrain.heightmap.minZ));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terrain]);
 
   // Tính bbox cho Overpass (±3km quanh trung tâm khu đất)
   const overpassBbox = geo
@@ -368,6 +379,132 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
     map.easeTo({ pitch, duration: 300 });
   }, [pitch, mapReady]);
 
+  // ── Toggle Elevation Heatmap overlay (tô màu cao độ kiểu topographic-map.com) ──
+  // Tạo ảnh canvas từ heightmap → MapLibre image source → raster layer opacity 0.55
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !terrain) return;
+
+    const SRC = 'elev-heatmap-src';
+    const LYR = 'elev-heatmap-layer';
+    const cleanup = () => {
+      if (map.getLayer(LYR))  map.removeLayer(LYR);
+      if (map.getSource(SRC)) map.removeSource(SRC);
+    };
+
+    if (!showElevHeatmap) {
+      cleanup();
+      return;
+    }
+
+    // Tính 4 góc của khu đất theo lat/lon (reuse logic parcel boundary)
+    const coords = boundsToLatLonPolygon(
+      terrain.bounds,
+      geo ? { lat: geo.lat, lon: geo.lon } : null,
+    );
+    if (!coords || coords.length < 5) return;
+
+    // boundsToLatLonPolygon trả 5 điểm theo thứ tự: SW, SE, NE, NW, SW(close)
+    // MapLibre ImageSource cần coordinates theo: TL, TR, BR, BL
+    // → TL=NW=coords[3], TR=NE=coords[2], BR=SE=coords[1], BL=SW=coords[0]
+    const imgCoords: [
+      [number, number], [number, number], [number, number], [number, number],
+    ] = [coords[3], coords[2], coords[1], coords[0]];
+
+    const url = buildElevationHeatmapDataURL(terrain.heightmap);
+    if (!url) return;
+
+    cleanup(); // re-create để chắc chắn không trùng
+    map.addSource(SRC, { type: 'image', url, coordinates: imgCoords });
+    // Chèn dưới roads-line (nếu có) để đường vẫn nổi trên heatmap
+    const beforeId = map.getLayer('roads-line') ? 'roads-line' : undefined;
+    map.addLayer({
+      id: LYR,
+      type: 'raster',
+      source: SRC,
+      paint: { 'raster-opacity': 0.55, 'raster-fade-duration': 0 },
+    }, beforeId);
+
+    return cleanup;
+  }, [showElevHeatmap, mapReady, terrain, geo]);
+
+  // ── Flood simulation overlay (floodmap.net style) ──────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !terrain) return;
+    const SRC = 'flood-src', LYR = 'flood-layer';
+    const cleanup = () => {
+      if (map.getLayer(LYR))  map.removeLayer(LYR);
+      if (map.getSource(SRC)) map.removeSource(SRC);
+    };
+    if (!showFlood) { cleanup(); return; }
+
+    const coords = boundsToLatLonPolygon(terrain.bounds, geo ? { lat: geo.lat, lon: geo.lon } : null);
+    if (!coords || coords.length < 5) return;
+    const imgCoords: [[number,number],[number,number],[number,number],[number,number]] =
+      [coords[3], coords[2], coords[1], coords[0]];
+
+    const url = buildFloodDataURL(terrain.heightmap, waterLevel);
+    if (!url) return;
+    cleanup();
+    map.addSource(SRC, { type: 'image', url, coordinates: imgCoords });
+    const beforeId = map.getLayer('roads-line') ? 'roads-line' : undefined;
+    map.addLayer({ id: LYR, type: 'raster', source: SRC,
+      paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
+    }, beforeId);
+    return cleanup;
+  }, [showFlood, waterLevel, mapReady, terrain, geo]);
+
+  // ── Click-to-show-elevation (dùng heightmap data, không cần API ngoài) ─────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !terrain) return;
+    const hm = terrain.heightmap;
+
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      // Chỉ show khi 1 trong 2 overlay đang bật
+      if (!showElevHeatmap && !showFlood) return;
+
+      const { lat, lng } = e.latlng;
+      const coords = boundsToLatLonPolygon(terrain.bounds, geo ? { lat: geo.lat, lon: geo.lon } : null);
+      if (!coords || coords.length < 5) return;
+
+      // coords: [SW, SE, NE, NW, SW] → SW=coords[0], NE=coords[2]
+      const lonMin = coords[0][0], latMin = coords[0][1];
+      const lonMax = coords[2][0], latMax = coords[2][1];
+
+      // Tính vị trí tương đối trong heightmap (0..1)
+      const fx = (lng - lonMin) / (lonMax - lonMin);
+      const fy = (lat - latMin) / (latMax - latMin);
+      if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return;
+
+      const px = Math.floor(fx * hm.width);
+      const py = Math.floor(fy * hm.height);  // py=0 là minY (bottom)
+      const idx = py * hm.width + px;
+      const z = hm.data[idx];
+      if (!Number.isFinite(z)) return;
+
+      const depthM = showFlood ? Math.max(0, waterLevel - z) : null;
+
+      if (popupRef.current) popupRef.current.remove();
+      popupRef.current = new maplibregl.Popup({ closeOnClick: true, maxWidth: '200px' })
+        .setLngLat(e.lngLat)
+        .setHTML(`
+          <div style="font-size:12px;line-height:1.6">
+            <b>Cao độ địa hình</b><br>
+            <span style="font-size:18px;font-weight:700;color:#00E5CC">${z.toFixed(1)} m</span>
+            ${depthM !== null && depthM > 0
+              ? `<br><span style="color:#3B82F6">💧 Độ sâu ngập: <b>${depthM.toFixed(1)} m</b></span>`
+              : (showFlood ? `<br><span style="color:#22C55E">✓ Trên mực nước (khô)</span>` : '')}
+            <br><span style="font-size:10px;color:#888">${lat.toFixed(5)}°N, ${lng.toFixed(5)}°E</span>
+          </div>`)
+        .addTo(map);
+    };
+
+    map.on('click', onClick);
+    return () => { map.off('click', onClick); };
+  }, [showElevHeatmap, showFlood, waterLevel, mapReady, terrain, geo]);
+
   // Toggle địa hình 3D (DEM exaggeration) - bật/tắt source terrain
   useEffect(() => {
     const map = mapRef.current;
@@ -479,6 +616,50 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
           <Mountain size={10} /> Núi 3D
         </button>
 
+        {/* Elevation Heatmap toggle — tô màu cao độ từ heightmap của file CAD */}
+        <button
+          onClick={() => setShowElevHeatmap((v) => !v)}
+          title={showElevHeatmap
+            ? 'Tắt lớp tô màu cao độ'
+            : 'Bật lớp tô màu cao độ (gradient HSV rainbow theo Z của địa hình)'}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border transition
+            ${showElevHeatmap
+              ? 'bg-cyan-400/15 border-cyan-400/40 text-cyan-300'
+              : 'border-white/15 text-slate-500 hover:text-slate-300'}`}
+        >
+          <Palette size={10} /> Cao độ
+        </button>
+
+        {/* Flood simulation toggle (floodmap.net style) */}
+        <button
+          onClick={() => setShowFlood((v) => !v)}
+          title={showFlood ? 'Tắt mô phỏng ngập lụt' : 'Mô phỏng ngập lụt — kéo slider chọn mực nước'}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border transition
+            ${showFlood
+              ? 'bg-blue-400/15 border-blue-400/40 text-blue-300'
+              : 'border-white/15 text-slate-500 hover:text-slate-300'}`}
+        >
+          <Waves size={10} /> Ngập lụt
+        </button>
+
+        {/* Water level slider — chỉ hiện khi flood đang bật */}
+        {showFlood && terrain && (
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-blue-400/30 bg-blue-500/10">
+            <Waves size={10} className="text-blue-400" />
+            <input
+              type="range"
+              min={Math.round(terrain.heightmap.minZ)}
+              max={Math.round(terrain.heightmap.maxZ)}
+              step={1}
+              value={waterLevel}
+              onChange={(e) => setWaterLevel(Number(e.target.value))}
+              className="w-24 h-1 accent-blue-400"
+              title={`Mực nước: ${waterLevel} m`}
+            />
+            <span className="text-[9px] text-blue-300 font-mono w-12 text-right shrink-0">{waterLevel} m</span>
+          </div>
+        )}
+
         {/* Pitch slider — chỉ hiện khi đã bật map ready */}
         {mapReady && (
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-white/15">
@@ -545,6 +726,58 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
 
       {/* ── Map container ── */}
       <div ref={mapContainer} className="flex-1 min-h-0" />
+
+      {/* ── Elevation legend (topographic-map.com style) — hiện khi showElevHeatmap ── */}
+      {showElevHeatmap && terrain && (() => {
+        const { minZ, maxZ } = terrain.heightmap;
+        const steps = 20;
+        return (
+          <div className="absolute top-14 right-2 z-20 flex flex-col gap-0 rounded-md overflow-hidden
+                          shadow-lg border border-white/15 select-none pointer-events-none text-[9px]"
+               style={{ background: 'rgba(16,24,36,0.88)' }}>
+            <div className="px-2 py-1 text-center text-slate-400 font-bold border-b border-white/10 text-[9px]">Cao độ (m)</div>
+            {Array.from({ length: steps + 1 }, (_, i) => {
+              const t = 1 - i / steps; // top=max, bottom=min
+              const z = minZ + t * (maxZ - minZ);
+              const [r, g, b] = getElevHeatmapColor(t);
+              const textColor = t > 0.35 && t < 0.75 ? '#000' : '#fff';
+              return (
+                <div key={i}
+                     style={{ background: `rgba(${r},${g},${b},0.85)`, color: textColor }}
+                     className="px-2 py-[1.5px] font-mono text-right w-16">
+                  {z.toFixed(0)}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* ── Flood legend ── */}
+      {showFlood && (
+        <div className="absolute top-14 right-2 z-20 rounded-md px-2 py-1.5 text-[9.5px]
+                        bg-bg-dark/90 border border-blue-400/30 pointer-events-none shadow-lg">
+          <div className="text-blue-300 font-bold mb-1">💧 Mực nước: {waterLevel} m</div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded" style={{background:'rgba(0,100,220,0.7)'}} />
+            <span className="text-slate-400">Vùng ngập</span>
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="w-3 h-3 rounded" style={{background:'rgba(0,60,180,0.9)'}} />
+            <span className="text-slate-400">Ngập sâu</span>
+          </div>
+          <div className="text-slate-600 mt-1 text-[8.5px]">Click bản đồ → xem độ sâu</div>
+        </div>
+      )}
+
+      {/* Gợi ý click khi overlay bật */}
+      {(showElevHeatmap || showFlood) && (
+        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full
+                        bg-bg-dark/80 border border-white/10 text-[9px] text-slate-400 pointer-events-none
+                        backdrop-blur">
+          🖱 Click vào bản đồ để xem cao độ tại điểm
+        </div>
+      )}
 
       {/* Chú thích khu đất */}
       <div className="absolute bottom-8 left-3 z-10 flex items-center gap-2 px-2 py-1 rounded-md

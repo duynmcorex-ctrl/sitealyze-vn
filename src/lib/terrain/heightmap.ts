@@ -109,11 +109,8 @@ export function rasterizeTinToHeightmap(
   // Lưu mask trước khi lấp — mask=1 nghĩa là cell đã được rasterize thực sự
   const mask = new Uint8Array(filled); // copy trước khi fillHoles thay đổi filled
 
-  // Aggressive mask dilation 2 passes — lấp triệt để lỗ thủng nhỏ trong terrain.
-  // Rule: cell rỗng → dilate nếu có ≥1 láng giềng (4-connected) đã filled.
-  // 2 passes = mở rộng tối đa 2 cell ra ngoài → ~8m trên grid 4m/cell.
-  // Trade-off: rìa terrain hơi extend vài cell, nhưng KHÔNG còn lỗ thủng interior.
-  for (let pass = 0; pass < 2; pass++) {
+  // ── Pass A: Mask dilation 3 passes (lấp rìa + lỗ nhỏ gần bề mặt) ─────────
+  for (let pass = 0; pass < 3; pass++) {
     const next = new Uint8Array(mask);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
@@ -127,7 +124,44 @@ export function rasterizeTinToHeightmap(
     mask.set(next);
   }
 
-  // Lấp các cell rỗng (rìa) bằng láng giềng gần nhất qua passes
+  // ── Pass B: Exterior flood-fill → lấp lỗ thủng nội bộ triệt để ─────────
+  // Flood fill từ 4 viền canvas để tìm tất cả cell "bên ngoài" terrain.
+  // Mọi cell không-bên-ngoài và không-trong-mask = lỗ thủng nội bộ → thêm vào mask.
+  // Phương pháp này lấp lỗ bất kỳ kích thước BÊN TRONG terrain mà KHÔNG mở rộng rìa ngoài.
+  {
+    const exterior = new Uint8Array(width * height);
+    const extQ: number[] = [];
+    for (let x = 0; x < width; x++) {
+      if (!mask[x])                         { exterior[x] = 1;                      extQ.push(x); }
+      const bi = (height - 1) * width + x;
+      if (!mask[bi])                        { exterior[bi] = 1;                     extQ.push(bi); }
+    }
+    for (let y = 1; y < height - 1; y++) {
+      if (!mask[y * width])                 { exterior[y * width] = 1;              extQ.push(y * width); }
+      const ri = y * width + (width - 1);
+      if (!mask[ri])                        { exterior[ri] = 1;                     extQ.push(ri); }
+    }
+    let eh = 0;
+    while (eh < extQ.length) {
+      const idx = extQ[eh++];
+      const ex = idx % width, ey = (idx / width) | 0;
+      for (const [ddx, ddy] of [[-1,0],[1,0],[0,-1],[0,1]] as const) {
+        const nx = ex + ddx, ny = ey + ddy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const ni = ny * width + nx;
+        if (!exterior[ni] && !mask[ni]) { exterior[ni] = 1; extQ.push(ni); }
+      }
+    }
+    let interiorFilled = 0;
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i] && !exterior[i]) { mask[i] = 1; interiorFilled++; }
+    }
+    if (interiorFilled > 0) {
+      console.log(`[heightmap] Interior holes sealed: +${interiorFilled} cells (${(interiorFilled/(width*height)*100).toFixed(1)}%)`);
+    }
+  }
+
+  // Lấp data của các cell rỗng (rìa + lỗ) bằng láng giềng gần nhất
   fillHoles(data, filled, width, height);
 
   // Cập nhật min/max sau khi lấp
