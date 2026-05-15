@@ -465,7 +465,7 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
       // Chỉ show khi 1 trong 2 overlay đang bật
       if (!showElevHeatmap && !showFlood) return;
 
-      const { lat, lng } = e.latlng;
+      const { lat, lng } = e.lngLat;
       const coords = boundsToLatLonPolygon(terrain.bounds, geo ? { lat: geo.lat, lon: geo.lon } : null);
       if (!coords || coords.length < 5) return;
 

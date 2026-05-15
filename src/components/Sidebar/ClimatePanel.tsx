@@ -104,7 +104,7 @@ export function ClimatePanel() {
         {isLaoWind && (
           <div className="mt-2 flex items-start gap-1.5 bg-orange-500/10 rounded px-2 py-1.5">
             <Wind size={11} className="text-orange-400 shrink-0 mt-0.5" />
-            <span className="text-orange-300">⚡ Vùng Gió Lào: T > 40°C, ẩm &lt; 40% hướng Tây — bắt buộc vành đai cây xanh dày + Low-E cho cửa Tây</span>
+            <span className="text-orange-300">⚡ Vùng Gió Lào: T &gt; 40°C, ẩm &lt; 40% hướng Tây — bắt buộc vành đai cây xanh dày + Low-E cho cửa Tây</span>
           </div>
         )}
         {isCoastal && (
