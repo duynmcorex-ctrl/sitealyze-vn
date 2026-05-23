@@ -48,7 +48,7 @@ export function buildElevationSection(
 
   return {
     id: 'elevation',
-    title: '1. Cao độ địa hình',
+    title: '5. Cao độ địa hình',
     icon: '⛰️',
     summary: `Khu vực có cao độ ${fmtMeters(min, 1)} – ${fmtMeters(max, 1)}, chênh cao ${fmtMeters(diff, 1)} trên diện tích ${fmtArea(area)}.`,
     metrics: [
@@ -80,7 +80,7 @@ export function buildSlopeSection(
   slopeMode: SlopeClassMode,
 ): ReportSection {
   if (!slope) {
-    return emptySection('slope', '2. Độ dốc', 'Chưa có dữ liệu độ dốc.');
+    return emptySection('slope', '7. Độ dốc', 'Chưa có dữ liệu độ dốc.');
   }
   const classes = getSlopeClasses(slopeMode);
   const hist = histogramSlopeClass(slope.classes, hm.mask, classes.length);
@@ -135,7 +135,7 @@ export function buildSlopeSection(
 
   return {
     id: 'slope',
-    title: `2. Độ dốc (${slopeMode === 'percent' ? 'theo %' : 'theo °'})`,
+    title: `7. Độ dốc (${slopeMode === 'percent' ? 'theo %' : 'theo °'})`,
     icon: '📐',
     summary: `${classes[domIdx].label} chiếm ${fmtPct(hist.pct[domIdx])} diện tích — ${assessment}`,
     metrics: [
@@ -158,7 +158,7 @@ export function buildContourSection(
   interval: number,
 ): ReportSection {
   if (!contours) {
-    return emptySection('contour', '3. Đường đồng mức', 'Chưa tính đường đồng mức.');
+    return emptySection('contour', '6. Đường đồng mức', 'Chưa tính đường đồng mức.');
   }
   const totalLength = contours.reduce((s, seg) =>
     s + seg.paths.reduce((sl, p) => sl + p.length, 0), 0);
@@ -177,7 +177,7 @@ export function buildContourSection(
 
   return {
     id: 'contour',
-    title: '3. Đường đồng mức',
+    title: '6. Đường đồng mức',
     icon: '🗺️',
     summary: `Có ${totalSegments} mức cao độ, khoảng đều ${interval} m. Mật độ đường ${densityLabel} thể hiện địa hình ${densityLabel === 'dày' ? 'dốc' : densityLabel === 'trung bình' ? 'trung bình' : 'thoải'}.`,
     metrics: [
@@ -202,7 +202,7 @@ export function buildFeaturesSection(
   features: TerrainFeatures | undefined,
 ): ReportSection {
   if (!features) {
-    return emptySection('features', '4. Đặc trưng địa hình', 'Chưa tính đặc trưng địa hình.');
+    return emptySection('features', '3. Đặc trưng địa hình', 'Chưa tính đặc trưng địa hình.');
   }
   const area = terrainArea(hm);
   const ridgeCount = features.ridges.reduce((s, v) => s + (v ? 1 : 0), 0);
@@ -242,7 +242,7 @@ export function buildFeaturesSection(
 
   return {
     id: 'features',
-    title: '4. Đặc trưng địa hình',
+    title: '3. Đặc trưng địa hình',
     icon: '🏔️',
     summary,
     metrics: [
@@ -264,7 +264,7 @@ export function buildHydrologySection(
   hydro: HydrologyData | undefined,
 ): ReportSection {
   if (!hydro) {
-    return emptySection('hydrology', '5. Thủy văn', 'Chưa phân tích thủy văn.');
+    return emptySection('hydrology', '9. Thủy văn', 'Chưa phân tích thủy văn.');
   }
   const hotspots = accumulationHotspots(hydro, hm, 3);
   // Tỉ lệ vùng tích tụ cao (top 10% accum)
@@ -307,7 +307,7 @@ export function buildHydrologySection(
 
   return {
     id: 'hydrology',
-    title: '5. Thủy văn',
+    title: '9. Thủy văn',
     icon: '💧',
     summary: `Hướng thoát nước chủ đạo về phía ${D8_NAMES_VI[domD]}. ${drainageAssessment}`,
     metrics: [
@@ -335,7 +335,7 @@ export function buildSuitabilitySection(
   suit: SuitabilityData | undefined,
 ): ReportSection {
   if (!suit) {
-    return emptySection('suitability', '6. Đất xây dựng', 'Chưa đánh giá đất xây dựng.');
+    return emptySection('suitability', '8. Đất xây dựng', 'Chưa đánh giá đất xây dựng.');
   }
   const classes = SUIT_CLASSES_FALLBACK;
   const counts = new Array(classes.length).fill(0);
@@ -378,7 +378,7 @@ export function buildSuitabilitySection(
 
   return {
     id: 'suitability',
-    title: '6. Đất xây dựng',
+    title: '8. Đất xây dựng',
     icon: '🏗️',
     summary,
     metrics: [
@@ -446,7 +446,7 @@ export function buildSunSection(
 
   return {
     id: 'sun',
-    title: '7. Nắng & bóng đổ',
+    title: '1. Nắng & bóng đổ',
     icon: '☀️',
     summary: `Tháng ${env.month}, ${env.hour}h${geo ? `, ${geo.province.replace('Tỉnh ', '').replace('TP. ', '').replace('Thủ đô ', '')}` : ''}: mặt trời ở ${altDeg.toFixed(0)}° hướng ${azName}. ${solarPotential}`,
     metrics: [
@@ -526,7 +526,7 @@ export function buildWindSection(
 
   return {
     id: 'wind',
-    title: '8. Gió',
+    title: '2. Gió',
     icon: '💨',
     summary: geo
       ? `${geo.province.replace('Tỉnh ', '').replace('TP. ', '').replace('Thủ đô ', '')} T${env.month}: ${getWindClimate(geo.climateZone, env.month).label}. Phơi gió địa hình: ${exposureLevel}.`
@@ -562,7 +562,7 @@ export function buildViewshedSection(
   if (!viewshed || !viewpoint) {
     return {
       id: 'viewshed',
-      title: '9. Tầm nhìn',
+      title: '4. Tầm nhìn',
       icon: '👁️',
       summary: 'Chưa có điểm quan sát.',
       metrics: [],

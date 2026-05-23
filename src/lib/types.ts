@@ -7,12 +7,25 @@ export interface ContourPolyline {
   closed?: boolean;
 }
 
+/** Candidate boundary polyline — user chọn manual qua dropdown */
+export interface BoundaryCandidate {
+  polygon: { x: number; y: number }[];
+  layer: string;
+  area: number;
+  aspectRatio: number;
+  pctOfBbox: number;
+  closedKind: 'flag-shape' | 'flag-closed' | 'endpoints' | 'forced-open';
+  isLikelyBoundary: boolean;
+}
+
 export interface ParsedDxf {
   contours: ContourPolyline[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number; minZ: number; maxZ: number };
   pointCount: number;
   /** Road polylines thô từ file CAD — tách riêng để worker pass qua TerrainData */
   rawRoads?: RawRoadPolyline[];
+  /** List candidate ranh giới — UI hiển thị dropdown cho user pick */
+  boundaryCandidates?: BoundaryCandidate[];
 }
 
 export interface Heightmap {
@@ -25,6 +38,12 @@ export interface Heightmap {
   maxZ: number;
   /** 1 = cell was rasterized from TIN triangles, 0 = gap-filled by fillHoles */
   mask?: Uint8Array;
+  /** Mask gốc trước khi user pick boundary — giữ để switch boundary không phá data
+   *  Khi user pick boundary mới: mask = clone(originalMask) → apply clip */
+  originalMask?: Uint8Array;
+  /** minZ/maxZ gốc khi chưa clip */
+  originalMinZ?: number;
+  originalMaxZ?: number;
 }
 
 // ── Auto-generated analysis report ──────────────────────────────────────────
@@ -91,6 +110,10 @@ export interface OverlayLayer {
   treePoints?: TreePoint[];
   /** Polylines in Three.js centered world space, ready to render */
   polylines: { x: number; y: number; z: number }[][];
+  /** Vị trí TEXT/MTEXT entity trong layer (toạ độ DXF gốc — để manual-tag làm tree) */
+  textPositions?: { x: number; y: number; content: string }[];
+  /** Số entity theo loại — phục vụ TreesDiagnostic */
+  entityCounts?: { polyline: number; circle: number; text: number; insert: number };
 }
 
 export interface TerrainData {
@@ -106,6 +129,8 @@ export interface TerrainData {
    * FileUpload.tsx dùng để tạo OverlayLayer với roadMeta sau khi build terrain.
    */
   rawRoadPolylines?: RawRoadPolyline[];
+  /** Candidate ranh giới — UI dropdown để user chọn manual */
+  boundaryCandidates?: BoundaryCandidate[];
 }
 
 // ── Road classification ──────────────────────────────────────────────────────
@@ -208,12 +233,63 @@ export type AnalysisMode =
   | 'contour'
   | 'features'
   | 'suitability'
+  | 'mca'           // V2 — GIS-MCA 9 tiêu chí (theo NCKH ĐH Kiến trúc HN 2026)
   | 'hydrology'
   | 'sun'
   | 'wind'
   | 'viewshed'
   | 'roads'
   | 'landuse';
+
+// ── Multi-Criteria Analysis (MCA) ─────────────────────────────────────────
+// Phương pháp đánh giá quỹ đất xây dựng theo nghiên cứu KTS HN 2026:
+//   9 tiêu chí X1-X9, mỗi tiêu chí scored 1-10 theo bảng tra,
+//   weighted sum + hard constraint → 3 lớp Y=0/1/2.
+//   Grid 20×20m (tương ứng đơn vị lô đất QH 1/500).
+
+/** Kết quả 1 cell trong Grid 20×20m */
+export interface MCACell {
+  /** Index trong grid (row-major) */
+  i: number;
+  /** Center cell trong DXF coords (m) */
+  centerX: number;
+  centerY: number;
+  /** 9 điểm tiêu chí — mỗi giá trị 1-10 */
+  x1: number; x2: number; x3: number;
+  x4: number; x5: number; x6: number;
+  x7: number; x8: number; x9: number;
+  /** Tổng điểm 0-100 (weighted sum × 10, sau khi áp hard constraint) */
+  score: number;
+  /** Lớp đầu ra: 0=Không thuận lợi, 1=Ít thuận lợi, 2=Thuận lợi */
+  classY: 0 | 1 | 2;
+  /** Mean Z trong ô (m) — dùng drape khối lên terrain */
+  meanZ: number;
+  /** Lý do bị veto (nếu có) */
+  vetoReason?: string;
+}
+
+export interface MCAData {
+  /** Cạnh ô grid (m) — mặc định 20 */
+  gridSize: number;
+  cols: number;
+  rows: number;
+  /** Origin DXF của grid (góc dưới-trái) */
+  originX: number;
+  originY: number;
+  cells: MCACell[];
+  /** Trọng số 9 tiêu chí — sum ≈ 1.0 */
+  weights: { x1: number; x2: number; x3: number; x4: number; x5: number;
+             x6: number; x7: number; x8: number; x9: number };
+  /** Phân bố % theo lớp */
+  classDist: { y0: number; y1: number; y2: number };
+  /** Diện tích (m²) theo lớp */
+  classArea: { y0: number; y1: number; y2: number };
+  /** Mean score theo từng tiêu chí — cho biểu đồ Feature Importance */
+  meanScores: { x1: number; x2: number; x3: number; x4: number; x5: number;
+                x6: number; x7: number; x8: number; x9: number };
+  /** Có dùng hard constraint không */
+  hardConstraintsApplied: boolean;
+}
 
 export interface EnvParams {
   month: number;
@@ -244,4 +320,10 @@ export interface EnvParams {
    * Không ảnh hưởng phân tích tương đối (độ dốc, thủy văn).
    */
   baseMSL: number;
+  /**
+   * Kiểu hiển thị gió 3D:
+   *   'v1' — cũ: hạt đơn sắc nổi đều (đơn giản)
+   *   'v2' — Windy-style: streak + màu theo tốc độ + địa hình ảnh hưởng tốc độ
+   */
+  windVisualization: 'v1' | 'v2';
 }

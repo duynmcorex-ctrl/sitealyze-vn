@@ -159,7 +159,7 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
   const [poiLoading, setPoiLoading] = useState<Set<string>>(new Set());
   const [showRoads, setShowRoads]   = useState(true);
   const [mapReady, setMapReady]     = useState(false);
-  const [baseStyle, setBaseStyle]   = useState<'satellite' | 'map'>('satellite');
+  const [baseStyle, setBaseStyle]   = useState<'satellite' | 'topo' | 'carto'>('satellite');
   const [pitch, setPitch]           = useState(0);
   const [terrain3D, setTerrain3D]   = useState(false);
   const [showElevHeatmap, setShowElevHeatmap] = useState(false);
@@ -219,6 +219,28 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
             url: 'https://tiles.openfreemap.org/planet',
             attribution: '© OpenFreeMap contributors, © OpenStreetMap contributors',
           },
+          // ── OpenTopoMap (bản đồ địa hình có đường đồng mức, free) ──
+          'opentopomap': {
+            type: 'raster',
+            tiles: [
+              'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+            ],
+            tileSize: 256,
+            attribution: '© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors',
+            maxzoom: 17,
+          },
+          // ── Carto Light (bản đồ nền sáng, phù hợp overlay cao độ/ngập) ──
+          'carto-light': {
+            type: 'raster',
+            tiles: [
+              'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+              'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+              'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+            ],
+            tileSize: 256,
+            attribution: '© CARTO, © OpenStreetMap contributors',
+            maxzoom: 19,
+          },
           // ── DEM cho địa hình 3D (AWS Open Data, không cần API key) ──
           'terrain-dem': {
             type: 'raster-dem',
@@ -238,6 +260,23 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
             source: 'esri-satellite',
             minzoom: 0,
             maxzoom: 22,
+            layout: { visibility: 'visible' },
+          },
+          {
+            id: 'opentopomap-tiles',
+            type: 'raster',
+            source: 'opentopomap',
+            minzoom: 0,
+            maxzoom: 22,
+            layout: { visibility: 'none' },
+          },
+          {
+            id: 'carto-tiles',
+            type: 'raster',
+            source: 'carto-light',
+            minzoom: 0,
+            maxzoom: 22,
+            layout: { visibility: 'none' },
           },
         ],
         // Sky atmosphere cho cảm giác Earth-like khi nghiêng (sky không có trong types,
@@ -365,12 +404,33 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
     map.setLayoutProperty('roads-line', 'visibility', showRoads ? 'visible' : 'none');
   }, [showRoads, mapReady]);
 
-  // Toggle base style (satellite / map)
+  // Toggle base style (satellite / topo / carto)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    map.setLayoutProperty('satellite-tiles', 'visibility', baseStyle === 'satellite' ? 'visible' : 'none');
+    const visMap: Record<string, 'satellite' | 'topo' | 'carto'> = {
+      'satellite-tiles': 'satellite',
+      'opentopomap-tiles': 'topo',
+      'carto-tiles': 'carto',
+    };
+    Object.entries(visMap).forEach(([layerId, style]) => {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', baseStyle === style ? 'visible' : 'none');
+      }
+    });
   }, [baseStyle, mapReady]);
+
+  // Grayscale base tiles khi bật Elevation Heatmap (theo guide Section 4: topographic-map.com style)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const saturation = showElevHeatmap ? -1 : 0;
+    ['satellite-tiles', 'opentopomap-tiles', 'carto-tiles'].forEach(id => {
+      if (map.getLayer(id)) {
+        map.setPaintProperty(id, 'raster-saturation', saturation);
+      }
+    });
+  }, [showElevHeatmap, mapReady]);
 
   // Đồng bộ pitch slider với map.pitch
   useEffect(() => {
@@ -581,19 +641,28 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
     <div className="flex flex-col h-full relative">
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-2 px-3 py-2 bg-bg-panel border-b border-white/10 shrink-0 flex-wrap">
-        {/* Base style toggle */}
+        {/* Base style toggle — 3 options */}
         <div className="flex rounded overflow-hidden border border-white/15 text-[10px] font-bold">
           <button
             onClick={() => setBaseStyle('satellite')}
+            title="Ảnh vệ tinh ESRI World Imagery"
             className={`px-2 py-1 transition ${baseStyle === 'satellite' ? 'bg-accent-teal text-bg-dark' : 'text-slate-400 hover:text-slate-200'}`}
           >
-            Vệ tinh
+            🛰 Vệ tinh
           </button>
           <button
-            onClick={() => setBaseStyle('map')}
-            className={`px-2 py-1 transition ${baseStyle === 'map' ? 'bg-accent-teal text-bg-dark' : 'text-slate-400 hover:text-slate-200'}`}
+            onClick={() => setBaseStyle('topo')}
+            title="Bản đồ địa hình OpenTopoMap — có đường đồng mức"
+            className={`px-2 py-1 transition border-l border-white/10 ${baseStyle === 'topo' ? 'bg-accent-teal text-bg-dark' : 'text-slate-400 hover:text-slate-200'}`}
           >
-            Bản đồ
+            🗺 Địa hình
+          </button>
+          <button
+            onClick={() => setBaseStyle('carto')}
+            title="Bản đồ nền sáng Carto Light — phù hợp overlay cao độ"
+            className={`px-2 py-1 transition border-l border-white/10 ${baseStyle === 'carto' ? 'bg-accent-teal text-bg-dark' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            🗾 Bản đồ
           </button>
         </div>
 

@@ -41,6 +41,44 @@ export function FileUpload() {
       }
       setTerrain(terrain);
 
+      // ── DWG hint: parser hạn chế, khuyến nghị export DXF ──
+      if (isDwg) {
+        console.log(
+          '[FileUpload] 💡 DWG dùng parser libredwg-web (hạn chế). ' +
+          'Nếu base map thiếu chi tiết (TEXT, HATCH, INSERT), export DXF R2018 từ AutoCAD: ' +
+          'File → Save As → DXF (chọn AutoCAD 2018 hoặc R2013).'
+        );
+        // Set warning vào state error tạm thời (info, không phải lỗi cứng)
+        setTimeout(() => {
+          setError(
+            '💡 File DWG đang dùng parser hạn chế. Nếu thiếu chi tiết base map ' +
+            '(TEXT, HATCH, block INSERT), khuyến nghị export DXF R2018 từ AutoCAD ' +
+            '(File → Save As → DXF) để bản đồ nền đầy đủ hơn.'
+          );
+        }, 100);
+      }
+
+      // ── Validate cao độ — cảnh báo nếu bị parser đọc sai ──
+      // Tính range Z / diagonal bbox. Nếu range > 50% diagonal → gradient phi lý,
+      // có thể do TEXT label gán nhầm cho contour. Emit warning (không block).
+      const hm = terrain.heightmap;
+      const range = hm.maxZ - hm.minZ;
+      const bboxDiag = Math.sqrt(
+        Math.pow(hm.width * hm.cellSize, 2) + Math.pow(hm.height * hm.cellSize, 2)
+      );
+      if (range / bboxDiag > 0.5 && range > 50) {
+        console.warn(
+          `[Terrain] Range Z (${range.toFixed(1)}m) / Diagonal (${bboxDiag.toFixed(0)}m) = ` +
+          `${(range / bboxDiag * 100).toFixed(0)}% — gradient bất thường. ` +
+          `Kiểm tra TEXT label hoặc vertex Z trong DXF.`
+        );
+        setError(
+          `⚠ Cao độ địa hình có thể đọc sai (chênh ${range.toFixed(0)}m trên ` +
+          `kích thước ${bboxDiag.toFixed(0)}m). Kiểm tra file DXF — có thể nhãn TEXT cao độ ` +
+          `chưa khớp đúng với đường đồng mức.`
+        );
+      }
+
       // ── Auto-import TẤT CẢ layer DXF khác (nhà, ranh giới, hạ tầng...) ──
       // Để KTS thấy đầy đủ bản đồ nền, không chỉ contour + đường giao thông
       // Chỉ DXF text — DWG file chưa hỗ trợ (user có thể export DXF từ AutoCAD)
@@ -60,12 +98,30 @@ export function FileUpload() {
             if (group.layerName === '0' && (group.polylines?.length ?? 0) === 0) continue;
 
             const worldPolylines = groupToWorldSpace(group, terrain.bounds, terrain.heightmap);
+            // Tree detection: circle-based (auto) có ưu tiên cao nhất
             const treeDetected = isTreeLayer(group.layerName) && (group.circles?.length ?? 0) > 0;
             const treePoints = treeDetected
               ? circlesToTreePoints(group.circles!, terrain.bounds, terrain.heightmap)
               : undefined;
 
-            if (worldPolylines.length === 0 && !treePoints?.length) continue;
+            // Cho phép layer chỉ có TEXT (không có polyline/circle) —
+            // để user có thể manual-tag làm cây qua TreesDiagnostic
+            const hasContent = worldPolylines.length > 0
+              || (treePoints?.length ?? 0) > 0
+              || (group.textPositions?.length ?? 0) > 0;
+            if (!hasContent) continue;
+
+            // Log diagnostics khi load (giúp user biết layer chứa gì)
+            if (group.entityCounts) {
+              const { polyline: pl, circle: ci, text: tx, insert: ins } = group.entityCounts;
+              if (pl + ci + tx + ins > 0) {
+                console.log(
+                  `[FileUpload] Layer "${group.layerName}": ` +
+                  `${pl} polyline, ${ci} circle, ${tx} text, ${ins} insert` +
+                  (treeDetected ? ` → AUTO-TREE (${treePoints?.length} cây)` : ''),
+                );
+              }
+            }
 
             const layer: OverlayLayer = {
               id: `auto-${fileTimestamp}-${group.layerName}`,
@@ -79,6 +135,8 @@ export function FileUpload() {
               isTree: treeDetected,
               treePoints,
               polylines: worldPolylines,
+              textPositions: group.textPositions,
+              entityCounts: group.entityCounts,
             };
             addOverlayLayer(layer);
             added++;
@@ -164,15 +222,6 @@ export function FileUpload() {
         }}
       />
       {fileName && <div className="mt-2 text-xs text-slate-400 truncate">{fileName}</div>}
-
-      {/* Khuyến nghị dùng DXF thay vì DWG */}
-      <div className="mt-2 px-2 py-1.5 rounded-md bg-sky-500/10 border border-sky-400/30">
-        <div className="text-[10px] text-sky-300 font-semibold">💡 Khuyến nghị: dùng DXF</div>
-        <div className="text-[9px] text-sky-200/80 leading-tight mt-0.5">
-          DXF giữ được cao độ Z và đường đồng mức gốc tốt hơn DWG.
-          Trong AutoCAD: <span className="font-mono">File → Save As → DXF (R2018)</span>
-        </div>
-      </div>
 
       <div className="mt-3">
         <label className="text-[10px] uppercase tracking-wider text-slate-500">

@@ -1,4 +1,5 @@
 import type { Heightmap } from '../types';
+import { sampleHMWorld } from '../terrain/sample';
 
 export interface TerrainFeatures {
   peaks: { x: number; y: number; z: number }[];
@@ -114,4 +115,114 @@ export function traceRidgePolylines(
   }
 
   return polylines;
+}
+
+/**
+ * isRidgeContinuous — Kiểm tra terrain giữa 2 đỉnh có "liên tục" (cùng một dãy)
+ * hay không, bằng cách sample heightmap dọc theo đoạn nối XZ.
+ *
+ * Logic: line nối A→B chỉ hợp lệ nếu mọi điểm sample dọc đoạn KHÔNG dip xuống
+ * thấp hơn min(zA, zB) - dropThreshold. Nếu dip sâu hơn → đoạn cắt qua
+ * thung lũng → 2 đỉnh thực sự ở 2 dãy khác nhau, không nối.
+ *
+ * @param dropThreshold Cho phép dip tối đa bao nhiêu mét dưới min peak
+ */
+export function isRidgeContinuous(
+  a: { x: number; y: number; z: number },
+  b: { x: number; y: number; z: number },
+  hm: Heightmap,
+  dropThreshold: number,
+  samples = 15,
+): boolean {
+  const minPeakZ = Math.min(a.y, b.y);
+  // Sample các điểm bên trong đoạn (bỏ 2 đầu vì đó chính là 2 đỉnh)
+  for (let i = 1; i < samples; i++) {
+    const t = i / samples;
+    const sx = a.x + (b.x - a.x) * t;
+    const sz = a.z + (b.z - a.z) * t;
+    const z  = sampleHMWorld(sx, sz, hm, minPeakZ);
+    if (minPeakZ - z > dropThreshold) return false;
+  }
+  return true;
+}
+
+/**
+ * connectPeaksMST — Tạo "đường sống núi" bằng cách nối các đỉnh phát hiện được
+ * theo Minimum Spanning Tree (Prim's algorithm) + kiểm tra terrain continuity.
+ *
+ * @param peaks  Danh sách đỉnh (đã ở Three.js world space)
+ * @param maxLinkDistance Bỏ qua link dài hơn ngưỡng này (tránh nối qua thung lũng rộng)
+ * @param hm Heightmap để check continuity. Nếu undefined → không check (legacy)
+ * @returns Mảng segment [start, end] để render bằng Line
+ */
+export function connectPeaksMST(
+  peaks: { x: number; y: number; z: number }[],
+  maxLinkDistance = Infinity,
+  hm?: Heightmap,
+): { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } }[] {
+  if (peaks.length < 2) return [];
+
+  // Drop threshold thích nghi: 10% của relief, tối thiểu 5m (chống noise)
+  const dropThreshold = hm
+    ? Math.max(5, (hm.maxZ - hm.minZ) * 0.10)
+    : Infinity;
+
+  const n = peaks.length;
+  const inTree = new Array<boolean>(n).fill(false);
+  // Bắt đầu từ đỉnh cao nhất
+  let startIdx = 0;
+  for (let i = 1; i < n; i++) if (peaks[i].y > peaks[startIdx].y) startIdx = i;
+  inTree[startIdx] = true;
+
+  // minDist[i] = khoảng cách ngắn nhất từ đỉnh i tới tree
+  const minDist = new Array<number>(n).fill(Infinity);
+  const parent  = new Array<number>(n).fill(-1);
+
+  // Cập nhật minDist cho các đỉnh chưa thuộc tree từ startIdx
+  for (let i = 0; i < n; i++) {
+    if (i === startIdx) continue;
+    const dx = peaks[i].x - peaks[startIdx].x;
+    const dz = peaks[i].z - peaks[startIdx].z;
+    minDist[i] = Math.hypot(dx, dz);
+    parent[i]  = startIdx;
+  }
+
+  const segments: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } }[] = [];
+
+  // Lặp n-1 lần để nối hết
+  for (let k = 0; k < n - 1; k++) {
+    // Tìm đỉnh ngoài tree có minDist nhỏ nhất
+    let bestI = -1, bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (!inTree[i] && minDist[i] < bestD) {
+        bestD = minDist[i];
+        bestI = i;
+      }
+    }
+    if (bestI < 0) break;
+
+    inTree[bestI] = true;
+    if (parent[bestI] >= 0 && bestD <= maxLinkDistance) {
+      const pA = peaks[parent[bestI]];
+      const pB = peaks[bestI];
+      // Chỉ nối nếu line đi qua "vùng cao" — không dip xuống thung lũng
+      if (!hm || isRidgeContinuous(pA, pB, hm, dropThreshold)) {
+        segments.push({ a: pA, b: pB });
+      }
+    }
+
+    // Cập nhật minDist cho các đỉnh ngoài tree
+    for (let i = 0; i < n; i++) {
+      if (inTree[i]) continue;
+      const dx = peaks[i].x - peaks[bestI].x;
+      const dz = peaks[i].z - peaks[bestI].z;
+      const d = Math.hypot(dx, dz);
+      if (d < minDist[i]) {
+        minDist[i] = d;
+        parent[i]  = bestI;
+      }
+    }
+  }
+
+  return segments;
 }

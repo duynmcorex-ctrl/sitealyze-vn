@@ -19,6 +19,11 @@ export function LayerPanel() {
   const setOverlayLayers = useSiteStore((s) => s.setOverlayLayers);
   const computeForMode = useSiteStore((s) => s.computeForMode);
   const mode = useSiteStore((s) => s.mode);
+  // Save/load: cần thêm context multi-project + scenes + env
+  const projects        = useSiteStore((s) => s.projects);
+  const activeProjectId = useSiteStore((s) => s.activeProjectId);
+  const env             = useSiteStore((s) => s.env);
+  const scenes          = useSiteStore((s) => s.scenes);
 
   const addLayerRef = useRef<HTMLInputElement>(null);
   const loadProjRef = useRef<HTMLInputElement>(null);
@@ -71,14 +76,24 @@ export function LayerPanel() {
 
   const handleSaveProject = () => {
     if (!terrain) return;
-    saveProject(terrain, overlayLayers);
+    const active = projects.find(p => p.id === activeProjectId);
+    saveProject({
+      activeProjectName: active?.name ?? 'SiteAlyze',
+      activeProjectId,
+      projects,
+      currentTerrain: terrain,
+      currentOverlayLayers: overlayLayers,
+      currentEnv: env,
+      currentScenes: scenes,
+    });
   };
 
   const handleLoadProject = async (file: File) => {
     const text = await file.text();
-    const { terrain: loadedTerrain, overlayLayers: loadedLayers } = loadProject(text);
-    setTerrain(loadedTerrain);
-    setOverlayLayers(loadedLayers);
+    const result = loadProject(text);
+    // Đợt này tối thiểu hoá: chỉ apply active terrain + overlay (multi-project import sẽ làm sau)
+    if (result.terrain) setTerrain(result.terrain);
+    setOverlayLayers(result.overlayLayers);
     computeForMode(mode);
   };
 

@@ -1,52 +1,76 @@
 import { useSiteStore } from '../../store/useSiteStore';
+import { Waves } from 'lucide-react';
 import { getSlopeClasses } from '../../lib/analysis/slope';
 import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
 import { ELEV_PALETTE_HEX, ELEV_PALETTE_SMALL_HEX, SMALL_RANGE_THRESHOLD_M } from '../../lib/analysis/elevationPalette';
 import { RoadsLegend } from '../Scene/RoadsRender';
 import { LANDUSE_DISPLAY_COLOR, LANDUSE_LABEL } from '../../lib/dxf/parseLanduse';
 
+/** Gradient bar + step labels cho rainbow/topographic mode — giống topographic-map.com */
+function RainbowElevationBar({ min, max }: { min: number; max: number }) {
+  const range = max - min;
+  // Tạo 12 bước đều nhau (từ cao xuống thấp)
+  const steps = 12;
+  const stepSize = range / steps;
+  const labels: number[] = [];
+  for (let i = steps; i >= 0; i--) {
+    labels.push(Math.round(min + i * stepSize));
+  }
+  // Màu gradient: high(đỏ) → mid(vàng) → low(xanh) — giống topo
+  const gradientColors = 'linear-gradient(to bottom, #aa1111, #e05500, #f5b800, #aacc44, #2a8a6e, #1a4fcc)';
+
+  return (
+    <div className="flex gap-2 items-stretch">
+      {/* Gradient bar */}
+      <div
+        className="w-5 rounded-sm flex-shrink-0"
+        style={{ background: gradientColors, minHeight: 180 }}
+      />
+      {/* Labels */}
+      <div className="flex flex-col justify-between text-[9.5px] font-mono text-slate-300 py-0.5">
+        {labels.map((v) => (
+          <span key={v} className="leading-none">{v} m</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Legend() {
   const mode    = useSiteStore((s) => s.mode);
   const terrain = useSiteStore((s) => s.terrain);
   const hide    = useSiteStore((s) => s.hideOverlay);
-  const baseMSL = useSiteStore((s) => s.env.baseMSL);
+  const showFlood3D   = useSiteStore((s) => s.showFlood3D);
+  const waterLevel3D  = useSiteStore((s) => s.waterLevel3D);
+  const toggleFlood3D = useSiteStore((s) => s.toggleFlood3D);
+  // baseMSL đã bỏ khỏi UI — luôn hiển thị cao độ TUYỆT ĐỐI từ file
+  const baseMSL = 0;
   const slopeMode = useSiteStore((s) => s.slopeMode);
   const showAllPeaks = useSiteStore((s) => s.showAllPeakElevations);
   const toggleAllPeaks = useSiteStore((s) => s.toggleAllPeakElevations);
-  const report = useSiteStore((s) => s.report);
-  const toggleReportPanel = useSiteStore((s) => s.toggleReportPanel);
+  const elevColorMode = useSiteStore((s) => s.elevColorMode);
   if (!terrain || hide) return null;
-
-  // Section nhận xét tương ứng với mode đang chọn (đã build trong setMode)
-  const section = report?.sections.find((s) => s.id === mode);
 
   let content: React.ReactNode = null;
   let title = '';
   switch (mode) {
     case 'elevation':
       title = 'Phân tích cao độ';
-      content = (
-        <ElevationSteps
-          min={terrain.heightmap.minZ + baseMSL}
-          max={terrain.heightmap.maxZ + baseMSL}
-        />
-      );
+      content = elevColorMode === 'rainbow'
+        ? <RainbowElevationBar min={terrain.heightmap.minZ + baseMSL} max={terrain.heightmap.maxZ + baseMSL} />
+        : <ElevationSteps min={terrain.heightmap.minZ + baseMSL} max={terrain.heightmap.maxZ + baseMSL} />;
       break;
     case 'contour':
       title = 'Đường đồng mức';
       content = (
         <div className="space-y-1.5 text-xs text-slate-200">
-          <div className="flex items-center gap-2">
-            <span className="w-5 h-3 rounded-sm flex-shrink-0" style={{ background: '#d4cfc1' }} />
-            <span>Nền địa hình</span>
-          </div>
+          {/* Nền dùng cùng bảng màu cao độ → chỉ chú thích đường đồng mức */}
           <div className="flex items-center gap-2">
             <span className="w-5 h-0.5 rounded flex-shrink-0" style={{ background: '#22d3c5' }} />
             <span>Đường đồng mức</span>
           </div>
           <div className="text-[10px] text-slate-500 pt-0.5">
-            Dải cao độ: {(terrain.heightmap.minZ + baseMSL).toFixed(1)} – {(terrain.heightmap.maxZ + baseMSL).toFixed(1)} m
-            {baseMSL !== 0 && <span className="text-accent-teal"> (+{baseMSL}m)</span>}
+            Dải cao độ: {terrain.heightmap.minZ.toFixed(1)} – {terrain.heightmap.maxZ.toFixed(1)} m
           </div>
         </div>
       );
@@ -169,70 +193,25 @@ export function Legend() {
       <div className="text-[11px] font-bold uppercase tracking-wider text-accent-teal mb-2">{title}</div>
       {content}
 
-      {/* ── Inline comments: notes + recommendations từ report section ── */}
-      {section && (section.notes.length > 0 || (section.recommendations?.length ?? 0) > 0) && (
-        <div className="mt-3 pt-2.5 border-t border-white/10 space-y-2">
-          {/* Summary (nếu có) */}
-          {section.summary && (
-            <div className="text-[10px] text-slate-300 leading-snug italic">
-              {section.icon && <span className="mr-1">{section.icon}</span>}
-              {section.summary}
-            </div>
-          )}
-
-          {/* Metrics đã có sẵn ở section.metrics — hiện 2-3 cái nổi bật */}
-          {section.metrics.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {section.metrics.slice(0, 4).map((m, i) => (
-                <span
-                  key={i}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
-                    m.emphasis === 'good' ? 'bg-emerald-500/10 border-emerald-400/40 text-emerald-300' :
-                    m.emphasis === 'warn' ? 'bg-amber-500/10 border-amber-400/40 text-amber-300' :
-                    m.emphasis === 'bad'  ? 'bg-red-500/10 border-red-400/40 text-red-300' :
-                                            'bg-bg-card border-white/10 text-slate-300'
-                  }`}
-                  title={m.label}
-                >
-                  <span className="text-slate-500 font-normal">{m.label}: </span>
-                  {m.value}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Notes (bullet) */}
-          {section.notes.length > 0 && (
-            <ul className="space-y-1 text-[10px] text-slate-300 leading-snug list-disc pl-3.5">
-              {section.notes.slice(0, 5).map((note, i) => (
-                <li key={i}>{note}</li>
-              ))}
-            </ul>
-          )}
-
-          {/* Recommendations (highlight box) */}
-          {(section.recommendations?.length ?? 0) > 0 && (
-            <div className="px-2 py-1.5 rounded bg-accent-teal/10 border border-accent-teal/30">
-              <div className="text-[9px] uppercase tracking-wider text-accent-teal font-bold mb-1">
-                💡 Khuyến nghị
-              </div>
-              <ul className="space-y-0.5 text-[10px] text-slate-200 leading-snug list-disc pl-3">
-                {section.recommendations!.slice(0, 3).map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Link mở full report */}
+      {/* ── Flood indicator — hiện khi showFlood3D đang bật ── */}
+      {showFlood3D && terrain && (
+        <div className="mt-2 pt-2 border-t border-blue-400/20 flex items-center gap-2">
+          <Waves size={11} className="text-blue-400 shrink-0" />
+          <div className="flex-1 text-[10px]">
+            <span className="text-blue-300 font-bold">{waterLevel3D.toFixed(1)} m</span>
+            <span className="text-slate-500 ml-1">
+              (+{Math.max(0, waterLevel3D - terrain.heightmap.minZ).toFixed(1)} m trên đáy)
+            </span>
+          </div>
           <button
-            onClick={toggleReportPanel}
-            className="w-full text-[9px] uppercase tracking-wider text-slate-500 hover:text-accent-teal transition py-0.5"
-          >
-            Xem báo cáo đầy đủ →
-          </button>
+            onClick={toggleFlood3D}
+            className="text-[9px] text-blue-400/60 hover:text-blue-300 transition"
+            title="Tắt mô phỏng ngập"
+          >✕</button>
         </div>
       )}
+
+      {/* Nhận xét chi tiết đã chuyển vào Sidebar Mục 2 — Đánh giá hiện trạng */}
     </div>
   );
 }

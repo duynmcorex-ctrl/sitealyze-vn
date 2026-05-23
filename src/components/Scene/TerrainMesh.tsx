@@ -6,12 +6,26 @@ import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
 import { ELEV_PALETTE_RGB, ELEV_PALETTE_SMALL_RGB, SMALL_RANGE_THRESHOLD_M, elevPaletteIndex } from '../../lib/analysis/elevationPalette';
 import { ThreeEvent } from '@react-three/fiber';
 
+/** Gradient topographic kiểu bản đồ địa hình (xanh→vàng→đỏ→nâu→trắng) */
+function rainbowElevColor(t: number, c: THREE.Color): void {
+  // t=0 (thấp nhất) → blue; t=1 (cao nhất) → purple/white
+  // Dùng dải HSL: 0.67 (blue) → 0.33 (green) → 0.16 (yellow) → 0 (red) → -0.08 (maroon)
+  // Đơn giản: setHSL với hue chạy từ 0.67 (blue) xuống 0 (red) rồi xuống 0.83 (purple)
+  const hue = 0.67 - t * 0.67;   // blue → red
+  const sat = 0.9 - t * 0.2;     // giảm nhẹ saturation ở cao
+  const lit = 0.35 + t * 0.25;   // sáng dần lên cao
+  c.setHSL(hue, sat, lit);
+}
+
 export function TerrainMesh() {
   const terrain = useSiteStore((s) => s.terrain);
   const mode = useSiteStore((s) => s.mode);
   const analysis = useSiteStore((s) => s.analysis);
   const slopeMode = useSiteStore((s) => s.slopeMode);
   const setViewpoint = useSiteStore((s) => s.setViewpoint);
+  const terrainRenderMode = useSiteStore((s) => s.terrainRenderMode);
+  const elevColorMode = useSiteStore((s) => s.elevColorMode);
+  const setClickedPoint = useSiteStore((s) => s.setClickedPoint);
   const meshRef = useRef<THREE.Mesh>(null);
 
   const geometry = useMemo(() => {
@@ -40,31 +54,43 @@ export function TerrainMesh() {
       colors[i * 3 + 2] = c.b;
     };
 
-    // Terrain phẳng (Z biến thiên < 0.5m): tất cả mode dùng màu solid để tránh
-    // gradient giả (chia cho range gần 0)
-    const isFlat = Math.abs(hm.maxZ - hm.minZ) < 0.5;
+    // Terrain phẳng: chỉ coi là phẳng khi range < 0.1m (gần như 0)
+    // Trước đây 0.5m làm files có chênh 1–5m thành màu xám đơn — sai
+    const isFlat = Math.abs(hm.maxZ - hm.minZ) < 0.1;
 
-    if (mode === 'elevation') {
-      // Dải màu rời rạc theo cao độ (10 bước)
+    // Helper: tô màu mesh theo bảng màu cao độ — dùng cho cả mode 'elevation' và 'contour'
+    const applyElevationPalette = () => {
       if (isFlat) {
-        // Địa hình phẳng — màu xám nhạt trung tính, không dùng gradient giả
         for (let i = 0; i < n; i++) setColor(i, '#94a3b8');
+        return;
+      }
+      if (elevColorMode === 'rainbow') {
+        const range = Math.max(1e-6, hm.maxZ - hm.minZ);
+        for (let i = 0; i < n; i++) {
+          const t = (hm.data[i] - hm.minZ) / range;
+          rainbowElevColor(t, c);
+          colors[i * 3]     = c.r;
+          colors[i * 3 + 1] = c.g;
+          colors[i * 3 + 2] = c.b;
+        }
       } else {
-        // Dải cao độ nhỏ (<10m): dùng palette đất tự nhiên (xanh–nâu) thay vì blue→red
-        // để tránh ảo giác địa hình có chênh lệch lớn
         const range = hm.maxZ - hm.minZ;
         const palette = range < SMALL_RANGE_THRESHOLD_M ? ELEV_PALETTE_SMALL_RGB : ELEV_PALETTE_RGB;
         for (let i = 0; i < n; i++) {
           const idx = elevPaletteIndex(hm.data[i], hm.minZ, hm.maxZ);
           const [r, g, b] = palette[idx];
-          colors[i * 3] = r;
+          colors[i * 3]     = r;
           colors[i * 3 + 1] = g;
           colors[i * 3 + 2] = b;
         }
       }
+    };
+
+    if (mode === 'elevation') {
+      applyElevationPalette();
     } else if (mode === 'contour') {
-      // Mặt nền solid be nâu nhạt — đường đồng mức render bằng ContourLines.tsx ở trên
-      for (let i = 0; i < n; i++) setColor(i, '#d4cfc1');
+      // Dùng cùng bảng màu cao độ (không còn nền tan đơn) → đường đồng mức nổi rõ trên gradient
+      applyElevationPalette();
     } else if (mode === 'wind') {
       // Wind: gradient mịn để particle nổi bật
       for (let i = 0; i < n; i++) {
@@ -133,7 +159,7 @@ export function TerrainMesh() {
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     (geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
-  }, [mode, analysis, terrain, geometry, slopeMode]);
+  }, [mode, analysis, terrain, geometry, slopeMode, elevColorMode]);
 
   // Center camera on first load
   useEffect(() => {
@@ -146,14 +172,38 @@ export function TerrainMesh() {
     void sz;
   }, [terrain]);
 
+  // Tự động xoá clickedPoint khi rời khỏi tab "Cao độ"
+  useEffect(() => {
+    if (mode !== 'elevation') setClickedPoint(null);
+  }, [mode, setClickedPoint]);
+
   if (!terrain || !geometry) return null;
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    if (mode !== 'viewshed') return;
     e.stopPropagation();
     const p = e.point;
-    setViewpoint({ x: p.x, z: p.z, height: 1.7 });
+    if (mode === 'viewshed') {
+      setViewpoint({ x: p.x, z: p.z, height: 1.7 });
+    } else if (mode === 'elevation') {
+      // Chỉ ở tab "Cao độ" mới đặt marker — tránh hiện điểm khi đang ở Đồng mức/Slope/...
+      setClickedPoint({ x: p.x, y: p.y, z: p.z });
+    }
   };
+
+  // Wireframe mode: chỉ render nét lưới, không tô mặt — giống nét file DXF gốc
+  if (terrainRenderMode === 'wireframe') {
+    return (
+      <mesh ref={meshRef} geometry={geometry} onClick={handleClick}>
+        <meshBasicMaterial
+          vertexColors
+          wireframe
+          side={THREE.DoubleSide}
+          transparent
+          opacity={0.85}
+        />
+      </mesh>
+    );
+  }
 
   return (
     <mesh ref={meshRef} geometry={geometry} castShadow receiveShadow onClick={handleClick}>

@@ -4,38 +4,7 @@ import { Html } from '@react-three/drei';
 import { useSiteStore } from '../../store/useSiteStore';
 import { ELEV_PALETTE_HEX, elevPaletteIndex } from '../../lib/analysis/elevationPalette';
 import { originalContoursToSegments } from '../../lib/analysis/contours';
-import type { Heightmap } from '../../lib/types';
-
-/**
- * Sample heightmap height tại vị trí Three.js world (wx, wz).
- * Chuyển ngược: world → DXF coords → grid index → bilinear interp.
- * Trả về `fallback` nếu điểm nằm ngoài grid.
- */
-function sampleHM(
-  wx: number, wz: number,
-  bounds: { minX: number; minY: number; maxX: number; maxY: number },
-  hm: Heightmap,
-  fallback: number,
-): number {
-  const cx = (bounds.minX + bounds.maxX) / 2;
-  const cy = (bounds.minY + bounds.maxY) / 2;
-  // Three.js world → DXF: X = wx + cx, Y = cy - wz (flip Z)
-  const dxfX = wx + cx;
-  const dxfY = cy - wz;
-  const fx = (dxfX - hm.origin.x) / hm.cellSize;
-  const fy = (dxfY - hm.origin.y) / hm.cellSize;
-  // Clamp vào [0, width-2] / [0, height-2] để c1/r1 không vượt biên
-  const c0 = Math.max(0, Math.min(hm.width  - 2, Math.floor(fx)));
-  const r0 = Math.max(0, Math.min(hm.height - 2, Math.floor(fy)));
-  const c1 = c0 + 1, r1 = r0 + 1;
-  const tx = fx - c0, ty = fy - r0;
-  const h =
-    hm.data[r0 * hm.width + c0] * (1 - tx) * (1 - ty) +
-    hm.data[r0 * hm.width + c1] *       tx  * (1 - ty) +
-    hm.data[r1 * hm.width + c0] * (1 - tx) *       ty  +
-    hm.data[r1 * hm.width + c1] *       tx  *       ty;
-  return Number.isFinite(h) ? h : fallback;
-}
+import { sampleHM } from '../../lib/terrain/sample';
 
 export function ContourLines() {
   const terrain  = useSiteStore((s) => s.terrain);
@@ -51,16 +20,37 @@ export function ContourLines() {
   // Nhãn chỉ hiển thị khi đang ở chế độ "đồng mức" chính (không phải overlay)
   const showLabels = mode === 'contour';
 
-  const { geometry, labelPoints } = useMemo(() => {
-    if (!terrain) return { geometry: null, labelPoints: [] };
+  const interval = env.contourInterval;
+
+  const { geometry, labelPoints, totalCount, keptCount } = useMemo(() => {
+    if (!terrain) return { geometry: null, labelPoints: [], totalCount: 0, keptCount: 0 };
 
     // Chọn nguồn segments: nguyên bản DXF (trung thực) HOẶC tính lại từ heightmap
-    const segments =
+    const rawSegments =
       useOriginal && terrain.contours.length > 0
         ? originalContoursToSegments(terrain.contours, terrain.bounds)
         : analysis.contours;
 
-    if (!segments || segments.length === 0) return { geometry: null, labelPoints: [] };
+    if (!rawSegments || rawSegments.length === 0) {
+      return { geometry: null, labelPoints: [], totalCount: 0, keptCount: 0 };
+    }
+
+    // ── Lọc theo contourInterval ──
+    // Khi interval > 1: chỉ giữ đường có elevation chia hết cho interval (± tol)
+    // → kéo slider lên cao = ít đường hơn = file 3D nhẹ hơn
+    let segments = rawSegments;
+    if (interval > 1) {
+      const tol = 0.05;
+      segments = rawSegments.filter(seg => {
+        const remainder = Math.abs(seg.elevation % interval);
+        return remainder < tol || remainder > interval - tol;
+      });
+    }
+
+    const totalCount = rawSegments.length;
+    const keptCount = segments.length;
+
+    if (segments.length === 0) return { geometry: null, labelPoints: [], totalCount, keptCount };
 
     const hm       = terrain.heightmap;
     // Offset nhỏ để tránh Z-fighting: 0.5% relief nhưng tối thiểu 0.3m, tối đa 2m
@@ -116,9 +106,15 @@ export function ContourLines() {
         : ELEV_PALETTE_HEX[elevPaletteIndex(elev, hm.minZ, hm.maxZ)],
     }));
 
-    return { geometry: g, labelPoints };
+    return { geometry: g, labelPoints, totalCount, keptCount };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrain, analysis.contours, colorMode, singleColor, useOriginal, terrain?.heightmap.minZ, terrain?.heightmap.maxZ, terrain?.bounds]);
+  }, [terrain, analysis.contours, colorMode, singleColor, useOriginal, interval, terrain?.heightmap.minZ, terrain?.heightmap.maxZ, terrain?.bounds]);
+
+  // Expose count to store cho TerrainTab UI ("Đang giữ N/M đường")
+  const setContourCount = useSiteStore((s) => s.setContourCount);
+  useMemo(() => {
+    setContourCount({ kept: keptCount, total: totalCount });
+  }, [keptCount, totalCount, setContourCount]);
 
   if (!geometry) return null;
 

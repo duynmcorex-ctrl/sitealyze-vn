@@ -48,8 +48,8 @@ export function ReportPanel() {
 
   return (
     <div
-      className="fixed right-[336px] bottom-4 z-50 flex flex-col"
-      style={{ width: 460, maxHeight: '78vh' }}
+      className="fixed bottom-4 z-50 flex flex-col"
+      style={{ right: 'calc(var(--sidebar-w, 336px) + 1rem)', width: 460, maxHeight: '78vh' }}
     >
       <div className="flex flex-col rounded-xl border border-white/10 bg-bg-base/95 backdrop-blur-md shadow-2xl overflow-hidden">
         {/* ── Header ── */}
@@ -280,10 +280,11 @@ export function ReportTrigger() {
   return (
     <button
       onClick={togglePanel}
-      className="fixed right-[336px] bottom-4 z-40 flex items-center gap-2 px-3 py-2
+      className="fixed bottom-4 z-40 flex items-center gap-2 px-3 py-2
                  bg-bg-card/90 backdrop-blur-sm border border-white/15
                  rounded-lg text-xs font-semibold text-slate-300
                  hover:border-accent-teal/60 hover:text-accent-teal transition shadow-lg"
+      style={{ right: 'calc(var(--sidebar-w, 336px) + 1rem)' }}
       title="Mở báo cáo phân tích"
     >
       {loading

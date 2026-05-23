@@ -47,6 +47,7 @@ export default function App() {
             <Legend />
             <Compass />
             <ViewButtons />
+            {/* FloodControl3D đã chuyển vào Sidebar Mục 2 → Tab Thủy văn */}
             <ReportPanel />
             <ReportTrigger />
           </div>

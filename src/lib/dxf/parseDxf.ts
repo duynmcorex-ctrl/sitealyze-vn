@@ -2,6 +2,7 @@ import DxfParser from 'dxf-parser';
 import type { ContourPolyline, ParsedDxf, RawRoadPolyline } from '../types';
 import { pickElevation } from './extractElevation';
 import { ROAD_LAYER_RE } from '../analysis/roads';
+import { collectBoundaryCandidates } from './detectBoundary';
 
 interface DxfVertex {
   x: number;
@@ -28,71 +29,12 @@ interface DxfEntity {
   insertionPoint?: DxfVertex;
 }
 
-/** Thử parse giá trị số từ text CAD (loại bỏ ký tự thừa, dấu phẩy → dấu chấm) */
-function parseNumericText(raw: string): number | null {
-  if (!raw) return null;
-  // Loại bỏ ký tự AutoCAD MTEXT formatting: \\P, {}, \pxi...
-  const clean = raw.replace(/\\[A-Za-z][^;]*;|[{}\\]|\\P/g, '').trim();
-  // Chấp nhận format "50.000", "50,000", "-5.5", "50" etc.
-  const m = clean.match(/^(-?\d+(?:[.,]\d+)?)$/);
-  if (!m) return null;
-  const v = parseFloat(m[1].replace(',', '.'));
-  return Number.isFinite(v) ? v : null;
-}
-
-/** Point-to-segment squared distance (2D) */
-function pt2segDist2(px: number, py: number,
-                     ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  if (len2 < 1e-12) return (px - ax) ** 2 + (py - ay) ** 2;
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
-  return (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2;
-}
-
-/**
- * Khi tất cả contour đều có Z=0 (file CAD chưa gán cao độ),
- * cố gắng đọc nhãn TEXT gần mỗi polyline để gán đúng elevation.
- * Trả về contours đã được cập nhật Z (hoặc giữ nguyên nếu không tìm được).
- */
-function assignElevationFromTextLabels(
-  contours: ContourPolyline[],
-  textLabels: { x: number; y: number; value: number }[],
-  terrainDiag: number, // đường chéo terrain (m) — dùng làm tham chiếu khoảng cách
-): ContourPolyline[] {
-  if (textLabels.length === 0) return contours;
-
-  // Ngưỡng: text phải nằm trong 8% đường chéo terrain so với contour gần nhất
-  // (rộng hơn 5% trước đây để bắt nhãn TEXT đặt xa đường đồng mức)
-  const maxDist2 = (terrainDiag * 0.08) ** 2;
-
-  return contours.map((c) => {
-    let bestDist2 = Infinity;
-    let bestVal: number | null = null;
-
-    for (const lbl of textLabels) {
-      // Tìm khoảng cách gần nhất từ text đến bất kỳ đoạn nào của polyline
-      for (let i = 0; i < c.points.length - 1; i++) {
-        const d2 = pt2segDist2(
-          lbl.x, lbl.y,
-          c.points[i].x, c.points[i].y,
-          c.points[i + 1].x, c.points[i + 1].y,
-        );
-        if (d2 < bestDist2) { bestDist2 = d2; bestVal = lbl.value; }
-      }
-      // Đơn điểm (polyline 1 điểm)
-      if (c.points.length === 1) {
-        const d2 = (lbl.x - c.points[0].x) ** 2 + (lbl.y - c.points[0].y) ** 2;
-        if (d2 < bestDist2) { bestDist2 = d2; bestVal = lbl.value; }
-      }
-    }
-
-    if (bestVal !== null && bestDist2 <= maxDist2) {
-      return { ...c, elevation: bestVal };
-    }
-    return c;
-  });
-}
+// ── ĐÃ GỠ: Toàn bộ logic "đoán Z từ TEXT label" và validation kèm theo. ──
+//   Trước đây có 5 hàm helper:
+//     parseNumericText, looksLikeRealContourSeries, countPlanningLayers,
+//     pt2segDist2, assignElevationFromTextLabels
+//   Lý do gỡ: gây fake terrain khi file QH/2D có TEXT chứa số (kích thước,
+//   mã lô, số tầng, scale legend…). User quyết: file Z=0 → giữ phẳng.
 
 // Pattern auto-detect tên layer chứa đường đồng mức (Việt + Anh phổ biến)
 const DEFAULT_CONTOUR_LAYER_RE =
@@ -132,7 +74,8 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
       const t = (ent.type || '').toUpperCase();
       if (t !== 'LWPOLYLINE' && t !== 'POLYLINE') continue;
       if (!ent.layer) continue;
-      const z = pickElevation(ent.vertices?.[0]?.z, ent.elevation, ent.layer);
+      const allZ = (ent.vertices || []).map(v => v?.z).filter((v): v is number => typeof v === 'number');
+      const z = pickElevation(ent.vertices?.[0]?.z, ent.elevation, ent.layer, allZ);
       const s = layerStats.get(ent.layer) || { total: 0, nonZero: 0, minZ: Infinity, maxZ: -Infinity };
       s.total++;
       if (z !== null && Math.abs(z) > 0.001) {
@@ -178,8 +121,6 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   const layerOk = userMatcher || autoMatcher;
 
   const contours: ContourPolyline[] = [];
-  /** TEXT / MTEXT entities có giá trị số — dùng để gán Z cho contour Z=0 */
-  const textLabels: { x: number; y: number; value: number }[] = [];
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
   let pointCount = 0;
@@ -220,23 +161,11 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
   for (const ent of dxf.entities) {
     const type = (ent.type || '').toUpperCase();
 
-    // ── Thu thập nhãn TEXT / MTEXT có giá trị số (cao độ) ──────────────────────
-    if (type === 'TEXT' || type === 'MTEXT') {
-      const raw = ent.text ?? ent.string ?? '';
-      const val = parseNumericText(raw);
-      if (val !== null) {
-        // Lấy vị trí insert của TEXT entity
-        const pos = ent.position ?? ent.startPoint ?? ent.insertionPoint;
-        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
-          textLabels.push({ x: pos.x, y: pos.y, value: val });
-        }
-      }
-      continue; // TEXT không dùng để tạo contour
-    }
-
-    // Bỏ qua các entity không tạo polyline geometry
+    // Bỏ qua các entity không tạo polyline geometry (gồm cả TEXT/MTEXT —
+    // không còn dùng để đoán Z; overlay TEXT vẫn được xử lý ở parseOverlayDxf.ts)
     if (type === 'INSERT' || type === 'ATTDEF' ||
-        type === 'DIMENSION' || type === 'HATCH' || type === 'SOLID') continue;
+        type === 'DIMENSION' || type === 'HATCH' || type === 'SOLID' ||
+        type === 'TEXT' || type === 'MTEXT') continue;
 
     // ── Road detection — CHỈ chạy nếu layer KHÔNG phải contour layer ──────────
     // Defense-in-depth: kể cả regex ROAD_LAYER_RE có lỡ match nhầm
@@ -268,8 +197,9 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
       const verts = ent.vertices ?? [];
       if (verts.length < 2) continue;
 
-      // Cao độ chung
-      const baseZ = pickElevation(verts[0]?.z, ent.elevation, ent.layer);
+      // Cao độ chung — duyệt mọi vertex để tìm Z thật (tránh vertex đầu = 0)
+      const allZ = verts.map(v => v?.z).filter((v): v is number => typeof v === 'number');
+      const baseZ = pickElevation(verts[0]?.z, ent.elevation, ent.layer, allZ);
       if (baseZ === null) continue;
 
       const points: { x: number; y: number }[] = [];
@@ -321,27 +251,6 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
 
   if (!Number.isFinite(minX) || pointCount === 0) {
     throw new Error('Không tìm thấy đường đồng mức có cao độ trong DXF. Kiểm tra layer/Z.');
-  }
-
-  // ── Tái tạo Z từ nhãn TEXT khi terrain gần như phẳng (Z biến thiên < 5m) ─
-  // Trigger mở rộng từ <1m → <5m để bắt được file có vài contour Z=2 do noise
-  // nhưng cơ bản vẫn flat (chưa có cao độ thật).
-  if (Math.abs(maxZ - minZ) < 5 && textLabels.length > 0) {
-    const diag = Math.hypot(maxX - minX, maxY - minY);
-    const updatedContours = assignElevationFromTextLabels(contours, textLabels, diag);
-
-    let newMinZ = Infinity, newMaxZ = -Infinity;
-    for (const c of updatedContours) {
-      if (c.elevation < newMinZ) newMinZ = c.elevation;
-      if (c.elevation > newMaxZ) newMaxZ = c.elevation;
-    }
-    if (newMaxZ > newMinZ + 0.5) {
-      contours.length = 0;
-      for (const c of updatedContours) contours.push(c);
-      minZ = newMinZ;
-      maxZ = newMaxZ;
-      console.log(`[parseDxf] Tái tạo Z từ ${textLabels.length} nhãn TEXT: ${newMinZ.toFixed(1)} – ${newMaxZ.toFixed(1)} m`);
-    }
   }
 
   // ❌ KHÔNG tự ý sửa cao độ MSL — giữ ĐÚNG Z từ CAD.
@@ -409,28 +318,30 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     }
   }
 
-  // ── Nếu sau tái tạo Z vẫn phẳng (< 0.5m) → throw error rõ ràng ──────────
-  // Không có Z trong file + không có TEXT match được → không thể tạo địa hình 3D
+  // ── File có Z=0 (vd file QH 1/500) → render mặt phẳng, KHÔNG báo lỗi ────
+  // Parser KHÔNG còn đoán Z từ TEXT label/layer name → file Z=0 luôn → flat terrain.
   if (Math.abs(maxZ - minZ) < 0.5) {
-    throw new Error(
-      'File DXF không có cao độ Z và không tìm thấy nhãn TEXT đủ gần đường đồng mức để tái tạo.\n\n' +
-      'Giải pháp:\n' +
-      '  1. Kiểm tra file CAD có đường đồng mức 3D (POLYLINE3D) hoặc thuộc tính Elevation\n' +
-      '  2. Hoặc đảm bảo có nhãn TEXT cao độ (vd: "1411.3") đặt cạnh các đường đồng mức\n' +
-      '  3. Hoặc convert sang DXF từ AutoCAD: File → Save As → DXF (R2018) để bảo toàn Z'
+    console.warn(
+      '[parseDxf] ⓘ File không có cao độ Z thật trong polyline/vertex — ' +
+      'render địa hình PHẲNG (Z=0). Bản vẽ 2D sẽ drape lên mặt phẳng.\n' +
+      '  Nếu cần địa hình 3D: file CAD phải có Z trong POLYLINE3D vertex, ' +
+      'hoặc entity elevation attribute.'
     );
+    // Ép range tối thiểu để rasterizer hoạt động bình thường; mọi cell sẽ ~0
+    minZ = -0.01;
+    maxZ = 0.01;
   }
 
-  // Lọc outlier Z bằng IQR — loại bỏ các contour có cao độ bất thường
-  // (thường do text/block/annotation bị đọc nhầm thành contour, ví dụ Z=9999, Z=-100)
-  // CHỈ chạy khi IQR đủ lớn — nếu iqr quá nhỏ, skip để tránh filter sai (bug iqr=0)
+  // ── BƯỚC LỌC OUTLIER (2 lớp) ────────────────────────────────────────────
+  // Lớp 1: IQR ×4 (lọc outlier xa)
+  // Lớp 2: P5-P95 percentile (lọc outlier "đậm" — vd file LLE có 1 contour Z=500
+  //         trong bulk Z=1-5 mà IQR không catch được do data bimodal)
   const elevations = contours.map((c) => c.elevation).sort((a, b) => a - b);
   const q1 = elevations[Math.floor(elevations.length * 0.25)];
   const q3 = elevations[Math.floor(elevations.length * 0.75)];
   const iqr = q3 - q1;
   let filtered: ContourPolyline[];
   if (iqr > 1) {
-    // IQR đủ rõ → filter outlier bằng ×4 IQR
     const zLo = q1 - iqr * 4;
     const zHi = q3 + iqr * 4;
     filtered = contours.filter((c) => c.elevation >= zLo && c.elevation <= zHi);
@@ -438,9 +349,90 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
       console.log(`[parseDxf] IQR filter: bỏ ${contours.length - filtered.length}/${contours.length} contour (Z<${zLo.toFixed(1)} hoặc Z>${zHi.toFixed(1)})`);
     }
   } else {
-    // IQR quá nhỏ (data clustered) → skip filter, giữ toàn bộ
-    console.log(`[parseDxf] IQR=${iqr.toFixed(2)} quá nhỏ — skip filter, giữ toàn bộ ${contours.length} contour`);
+    console.log(`[parseDxf] IQR=${iqr.toFixed(2)} quá nhỏ — skip IQR filter`);
     filtered = contours;
+  }
+
+  // ── LỚP 2: percentile filter P5-P95 ──
+  // Trigger khi: range tổng > 50m AND P5-P95 < 30% of range → có outlier
+  if (filtered.length >= 10) {
+    const sorted2 = filtered.map(c => c.elevation).sort((a, b) => a - b);
+    const p5  = sorted2[Math.floor(sorted2.length * 0.05)];
+    const p95 = sorted2[Math.floor(sorted2.length * 0.95)];
+    const totalRange = sorted2[sorted2.length - 1] - sorted2[0];
+    const p5p95Range = p95 - p5;
+    if (totalRange > 50 && p5p95Range > 0 && p5p95Range < totalRange * 0.3) {
+      const buffer = Math.max(p5p95Range * 0.5, 5);
+      const lo = p5 - buffer;
+      const hi = p95 + buffer;
+      const before = filtered.length;
+      filtered = filtered.filter(c => c.elevation >= lo && c.elevation <= hi);
+      const dropped = before - filtered.length;
+      if (dropped > 0) {
+        console.warn(
+          `[parseDxf] P5-P95 outlier filter: bỏ ${dropped}/${before} contour. ` +
+          `90% data trong ${p5.toFixed(1)}–${p95.toFixed(1)}m, ` +
+          `range tổng ${totalRange.toFixed(0)}m → giữ ${lo.toFixed(1)}–${hi.toFixed(1)}m.`
+        );
+      }
+    }
+  }
+
+  // ── LỚP 3: MAD (Median Absolute Deviation) — bắt outlier rải đều ──
+  // P5-P95 fail khi outlier "rải đều" như 1, 5, 10, 50, 100, 500 (Z evenly spread).
+  // MAD: median + 1.4826 × MAD × k. Threshold k=4 chấp nhận 99.99% với normal,
+  // outlier vượt ngưỡng → bỏ.
+  // Áp dụng khi: file có ít contour (<50) AND range > 30m (gradient nghi vấn)
+  if (filtered.length >= 5) {
+    const zs = filtered.map(c => c.elevation).sort((a, b) => a - b);
+    const median = zs[Math.floor(zs.length / 2)];
+    const range3 = zs[zs.length - 1] - zs[0];
+
+    if (filtered.length < 50 && range3 > 30) {
+      const deviations = zs.map(z => Math.abs(z - median)).sort((a, b) => a - b);
+      const mad = deviations[Math.floor(deviations.length / 2)];
+      // MAD = 0 nếu > nửa data trùng — skip filter (data thực sự phẳng)
+      if (mad > 0.01) {
+        const k = 4;
+        const threshold = 1.4826 * mad * k;
+        const before = filtered.length;
+        filtered = filtered.filter(c => Math.abs(c.elevation - median) <= threshold);
+        const dropped = before - filtered.length;
+        if (dropped > 0) {
+          console.warn(
+            `[parseDxf] MAD outlier filter: bỏ ${dropped}/${before} contour ` +
+            `(median=${median.toFixed(1)}m, MAD=${mad.toFixed(2)}m, threshold=±${threshold.toFixed(1)}m). ` +
+            `Các Z bị bỏ: ${zs.filter(z => Math.abs(z - median) > threshold).slice(0, 10).map(z => z.toFixed(1)).join(', ')}`
+          );
+        }
+      }
+    }
+  }
+
+  // ── LỚP 3: ratio range/bbox-diag sanity check ──
+  // Nếu range Z > 50% bbox diagonal → khả năng cao do outlier sót lại
+  // → emit warning (không filter — đã filter 2 lớp rồi) để user biết
+  if (filtered.length >= 5) {
+    let fxMin = Infinity, fxMax = -Infinity, fyMin = Infinity, fyMax = -Infinity;
+    let fzMin = Infinity, fzMax = -Infinity;
+    for (const c of filtered) {
+      if (c.elevation < fzMin) fzMin = c.elevation;
+      if (c.elevation > fzMax) fzMax = c.elevation;
+      for (const p of c.points) {
+        if (p.x < fxMin) fxMin = p.x;
+        if (p.y < fyMin) fyMin = p.y;
+        if (p.x > fxMax) fxMax = p.x;
+        if (p.y > fyMax) fyMax = p.y;
+      }
+    }
+    const diag = Math.hypot(fxMax - fxMin, fyMax - fyMin);
+    const zRange = fzMax - fzMin;
+    if (diag > 0 && zRange / diag > 0.5 && zRange > 30) {
+      console.warn(
+        `[parseDxf] ⚠ Range Z (${zRange.toFixed(0)}m) > 50% bbox diagonal (${diag.toFixed(0)}m). ` +
+        `Có thể terrain vẫn có outlier Z hoặc file mặt cắt (section). Kiểm tra DXF.`
+      );
+    }
   }
 
   // Cập nhật lại bounds Z sau khi lọc
@@ -471,10 +463,18 @@ export function parseDxfText(text: string, layerPattern?: string): ParsedDxf {
     }
   }
 
+  // ── Thu thập boundary candidates (KHÔNG auto-pick) ───────────────────────
+  // User sẽ chọn manual qua dropdown trong UI. Đợt trước auto-pick gây clip
+  // nhầm thành dải hẹp → cần để user kiểm soát.
+  const boundaryCandidates = collectBoundaryCandidates(dxf.entities, {
+    minX: realMinX, minY: realMinY, maxX: realMaxX, maxY: realMaxY,
+  });
+
   return {
     contours: filtered,
     bounds: { minX: realMinX, minY: realMinY, maxX: realMaxX, maxY: realMaxY, minZ: realMinZ, maxZ: realMaxZ },
     pointCount: realCount,
     rawRoads: rawRoads.length > 0 ? rawRoads : undefined,
+    boundaryCandidates: boundaryCandidates.length > 0 ? boundaryCandidates : undefined,
   };
 }

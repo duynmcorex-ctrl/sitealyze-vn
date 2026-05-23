@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSiteStore } from '../../store/useSiteStore';
-import { traceRidgePolylines } from '../../lib/analysis/features';
+import { connectPeaksMST } from '../../lib/analysis/features';
 
 // ── Google-Maps style pin ─────────────────────────────────────────────────────
 function PeakPin({
@@ -119,23 +119,33 @@ function PitMarker({ x, y, z, scale }: { x: number; y: number; z: number; scale:
   );
 }
 
-// ── Đường sống núi từ ridge mask ─────────────────────────────────────────────
-function RidgeLines({ polylines }: { polylines: { x: number; y: number; z: number }[][] }) {
-  const segments = useMemo(() => {
-    const geoms: THREE.BufferGeometry[] = [];
-    for (const pl of polylines) {
-      if (pl.length < 2) continue;
-      const pts = pl.map((p) => new THREE.Vector3(p.x, p.y + 0.5, p.z));
+// ── Đường sống núi: nối các đỉnh đã phát hiện bằng MST ──────────────────────
+function RidgeLines({
+  segments,
+}: {
+  segments: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } }[];
+}) {
+  const lineObjects = useMemo(() => {
+    return segments.map(s => {
+      const pts = [
+        new THREE.Vector3(s.a.x, s.a.y + 1.5, s.a.z),
+        new THREE.Vector3(s.b.x, s.b.y + 1.5, s.b.z),
+      ];
       const geom = new THREE.BufferGeometry().setFromPoints(pts);
-      geoms.push(geom);
-    }
-    return geoms;
-  }, [polylines]);
+      const mat  = new THREE.LineBasicMaterial({
+        color: '#fb923c',
+        linewidth: 2,
+        opacity: 0.9,
+        transparent: true,
+      });
+      return new THREE.Line(geom, mat);
+    });
+  }, [segments]);
 
   return (
     <group>
-      {segments.map((geom, i) => (
-        <primitive key={i} object={new THREE.Line(geom, new THREE.LineBasicMaterial({ color: '#fb923c', opacity: 0.75, transparent: true }))} />
+      {lineObjects.map((obj, i) => (
+        <primitive key={i} object={obj} />
       ))}
     </group>
   );
@@ -143,36 +153,40 @@ function RidgeLines({ polylines }: { polylines: { x: number; y: number; z: numbe
 
 // ── Component chính ───────────────────────────────────────────────────────────
 export function FeatureMarkers() {
-  const analysis      = useSiteStore((s) => s.analysis);
-  const terrain       = useSiteStore((s) => s.terrain);
-  const showAllPeaks  = useSiteStore((s) => s.showAllPeakElevations);
+  const analysis        = useSiteStore((s) => s.analysis);
+  const terrain         = useSiteStore((s) => s.terrain);
+  const showAllPeaks    = useSiteStore((s) => s.showAllPeakElevations);
+  const showRidgeLines  = useSiteStore((s) => s.showRidgeLines);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-
-  if (!analysis.features) return null;
 
   const hm    = terrain?.heightmap;
   const scale = hm ? Math.max(hm.cellSize * 1.5, 5) : 6;
 
   // Sắp xếp peaks theo cao độ giảm dần để đánh rank
-  const { peaks, pits, ridges } = analysis.features;
+  const peaks = analysis.features?.peaks ?? [];
+  const pits  = analysis.features?.pits  ?? [];
+
   const rankedPeaks = peaks
     .map((p, i) => ({ ...p, origIdx: i }))
     .sort((a, b) => b.y - a.y)
     .map((p, rank) => ({ ...p, rank: rank + 1 }))
-    // Sắp lại theo origIdx để selectedIdx khớp
     .sort((a, b) => a.origIdx - b.origIdx);
 
-  // Tracing ridge polylines — chỉ khi có heightmap
-  const ridgePolylines = useMemo(
-    () => hm ? traceRidgePolylines(ridges, hm) : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hm, ridges],
-  );
+  // Đường sống núi: nối các đỉnh bằng MST + check terrain continuity
+  // - maxLinkDistance: giới hạn khoảng cách 2D (tránh nối quá xa)
+  // - hm: cho phép sample heightmap dọc line → reject nếu cắt qua thung lũng
+  const ridgeSegments = useMemo(() => {
+    if (!hm || peaks.length < 2) return [];
+    const sceneSize = Math.max(hm.width, hm.height) * hm.cellSize;
+    return connectPeaksMST(peaks, sceneSize * 0.35, hm);
+  }, [hm, peaks]);
+
+  if (!analysis.features) return null;
 
   return (
     <group>
-      {/* Đường sống núi */}
-      <RidgeLines polylines={ridgePolylines} />
+      {/* Đường sống núi nối các đỉnh */}
+      {showRidgeLines && <RidgeLines segments={ridgeSegments} />}
 
       {rankedPeaks.map((p) => (
         <PeakPin

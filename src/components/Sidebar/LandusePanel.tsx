@@ -17,8 +17,11 @@ import { parseLanduseDxf, LANDUSE_DISPLAY_COLOR, LANDUSE_LABEL } from '../../lib
 import { parseLanduseXlsx, mergeIndicators } from '../../lib/dxf/parseLanduseXlsx';
 
 export function LandusePanel() {
-  const landuse = useSiteStore((s) => s.landuse);
-  const setLanduse = useSiteStore((s) => s.setLanduse);
+  const landuse           = useSiteStore((s) => s.landuse);
+  const setLanduse        = useSiteStore((s) => s.setLanduse);
+  const typeOverrides     = useSiteStore((s) => s.typeOverrides);
+  const setTypeOverride   = useSiteStore((s) => s.setTypeOverride);
+  const clearTypeOverride = useSiteStore((s) => s.clearTypeOverride);
   const dxfRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
   const [dxfFileName, setDxfFileName] = useState<string | null>(null);
@@ -150,35 +153,136 @@ export function LandusePanel() {
             </button>
           </div>
 
-          <div className="text-[9px] text-slate-500">
-            {landuse.indicators.length > 0 ? (
-              <>✓ {landuse.indicators.length} ô có chỉ tiêu</>
-            ) : (
-              <>⚠ Chưa có chỉ tiêu (load Excel để bổ sung)</>
-            )}
-          </div>
+          {/* Chỉ tiêu summary — phân biệt nguồn DXF vs Excel + chi tiết */}
+          {(() => {
+            const withCode = landuse.indicators.filter(i => i.code).length;
+            const withFloors = landuse.indicators.filter(i => i.maxFloors && i.maxFloors > 0).length;
+            const withDensity = landuse.indicators.filter(i => i.maxDensity && i.maxDensity > 0).length;
+            const withArea = landuse.indicators.filter(i => i.area && i.area > 0).length;
+            const bound = landuse.parcels.filter(p => p.indicator?.code).length;
 
-          {/* Phân bố loại đất */}
-          <div className="space-y-1">
-            {landuse.byType.slice(0, 6).map(b => (
-              <div key={b.type} className="flex items-center gap-1.5 text-[10px]">
-                <span
-                  className="block w-3 h-3 rounded-sm border border-white/20 flex-shrink-0"
-                  style={{ background: LANDUSE_DISPLAY_COLOR[b.type] }}
-                />
-                <span className="flex-1 min-w-0 truncate text-slate-300" title={LANDUSE_LABEL[b.type]}>
-                  {LANDUSE_LABEL[b.type]}
-                </span>
-                <span className="text-slate-500 tabular-nums">
-                  {b.pct.toFixed(1)}%
-                </span>
+            if (landuse.indicators.length === 0) {
+              return (
+                <div className="text-[9.5px] text-amber-400/80 leading-snug">
+                  ⚠ Chưa phát hiện vòng tròn chỉ tiêu trong DXF. Nếu file có chỉ tiêu, kiểm tra
+                  vòng tròn CIRCLE + TEXT A/B/C/D/E/G xung quanh. Hoặc load Excel SDD.
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-0.5">
+                <div className="text-[9.5px] text-accent-teal">
+                  ✓ Đọc được <b>{landuse.indicators.length}</b> ô chỉ tiêu từ DXF —{' '}
+                  <b className={bound > 0 ? 'text-green-300' : 'text-amber-400'}>
+                    {bound}
+                  </b>{' '}
+                  ô đã gắn vào parcel
+                </div>
+                <div className="text-[9px] text-slate-500 font-mono pl-3">
+                  Mã: {withCode} · Diện tích: {withArea} · MĐXD: {withDensity} · Tầng: {withFloors}
+                </div>
+                {bound === 0 && landuse.indicators.length > 0 && (
+                  <div className="text-[9.5px] text-amber-400/80 leading-snug pt-1">
+                    ⚠ Indicator parse được nhưng KHÔNG bind được parcel. Có thể:
+                    (1) Parcel polygon không chứa TEXT với mã ô,
+                    (2) Vòng tròn chỉ tiêu nằm rất xa parcel, hoặc
+                    (3) Layer parcel bị filter noise — xem console log.
+                  </div>
+                )}
+                {bound > 0 && (
+                  <div className="text-[9px] text-slate-500 leading-snug pt-0.5">
+                    → Sẵn sàng bật "Khối 3D công trình" ở Mục 3.
+                  </div>
+                )}
               </div>
-            ))}
-            {landuse.byType.length > 6 && (
-              <div className="text-[9px] text-slate-600 italic pl-4">
-                + {landuse.byType.length - 6} loại khác
-              </div>
-            )}
+            );
+          })()}
+
+          {/* ── Phân bố loại đất — BẢNG COMPACT, hiển thị ALL types ── */}
+          <div>
+            <div className="text-[9px] text-slate-500 italic mb-1 leading-snug">
+              💡 Gõ MĐXD% + Tầng cho từng loại đất → áp cho ô CHƯA có chỉ tiêu DXF/Excel.
+            </div>
+            {/* Table header */}
+            <div className="grid grid-cols-[14px_1fr_38px_28px_42px_38px_14px] gap-1 items-center
+                            text-[8.5px] uppercase tracking-wide text-slate-500 font-bold
+                            px-1 py-0.5 border-b border-white/10">
+              <span></span>
+              <span>Loại đất</span>
+              <span className="text-right">%</span>
+              <span className="text-right">Ô</span>
+              <span className="text-center">MĐXD</span>
+              <span className="text-center">Tầng</span>
+              <span></span>
+            </div>
+            {/* Table rows — TẤT CẢ loại đất, không slice */}
+            <div className="max-h-64 overflow-y-auto pr-0.5">
+              {landuse.byType.map(b => {
+                const ov = typeOverrides[b.type];
+                const mdxd = ov?.maxDensity;
+                const tang = ov?.maxFloors;
+                const parcelsOfType = landuse.parcels.filter(p => p.inferredType === b.type);
+                const noIndicator = parcelsOfType.filter(p => !p.indicator?.maxFloors).length;
+                const total = parcelsOfType.length;
+                const hasOverride = mdxd !== undefined || tang !== undefined;
+                return (
+                  <div
+                    key={b.type}
+                    className={`grid grid-cols-[14px_1fr_38px_28px_42px_38px_14px] gap-1 items-center
+                                px-1 py-0.5 text-[10px] border-b border-white/4 last:border-0
+                                ${hasOverride ? 'bg-amber-500/5' : ''} hover:bg-white/3 transition`}
+                    title={`${LANDUSE_LABEL[b.type]} · ${total} ô · ${noIndicator} chưa có chỉ tiêu`}
+                  >
+                    <span
+                      className="block w-3 h-3 rounded-sm border border-white/20"
+                      style={{ background: LANDUSE_DISPLAY_COLOR[b.type] }}
+                    />
+                    <span className="truncate text-slate-300">{LANDUSE_LABEL[b.type]}</span>
+                    <span className="text-right text-slate-500 tabular-nums">{b.pct.toFixed(1)}</span>
+                    <span className="text-right text-slate-500 tabular-nums">{total}</span>
+                    <input
+                      type="number" min={0} max={100} step={1}
+                      value={mdxd ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? undefined : Number(e.target.value);
+                        setTypeOverride(b.type, { maxDensity: v });
+                      }}
+                      placeholder="—"
+                      className="w-full px-0.5 py-0 text-[10px] text-center bg-bg-dark border border-white/10 rounded
+                                 text-slate-100 outline-none focus:border-amber-400/50"
+                    />
+                    <input
+                      type="number" min={0} max={50} step={1}
+                      value={tang ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? undefined : Number(e.target.value);
+                        setTypeOverride(b.type, { maxFloors: v });
+                      }}
+                      placeholder="—"
+                      className="w-full px-0.5 py-0 text-[10px] text-center bg-bg-dark border border-white/10 rounded
+                                 text-slate-100 outline-none focus:border-amber-400/50"
+                    />
+                    {hasOverride ? (
+                      <button
+                        onClick={() => clearTypeOverride(b.type)}
+                        className="text-[10px] text-slate-500 hover:text-red-400 transition leading-none"
+                        title="Xoá override"
+                      >✕</button>
+                    ) : <span/>}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Tổng summary */}
+            <div className="grid grid-cols-[14px_1fr_38px_28px_42px_38px_14px] gap-1 items-center
+                            px-1 py-1 text-[10px] font-bold border-t border-white/10
+                            bg-white/3 text-slate-200">
+              <span></span>
+              <span>TỔNG ({landuse.byType.length} loại)</span>
+              <span className="text-right tabular-nums">100</span>
+              <span className="text-right tabular-nums">{landuse.parcels.length}</span>
+              <span/><span/><span/>
+            </div>
           </div>
         </div>
       )}

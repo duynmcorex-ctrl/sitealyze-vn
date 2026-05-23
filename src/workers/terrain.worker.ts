@@ -15,10 +15,11 @@ async function buildTerrain(
   parsed: import('../lib/types').ParsedDxf,
   gridResolution: number,
 ): Promise<TerrainData> {
-  const { contours, bounds, rawRoads } = parsed;
+  const { contours, bounds, rawRoads, boundaryCandidates } = parsed;
   const tin = buildTIN(contours);
+  // Rasterize KHÔNG truyền boundary — user sẽ pick manual qua UI dropdown
+  // (applyBoundaryClip gọi sau ở client side khi user chọn)
   let heightmap = rasterizeTinToHeightmap(tin, bounds, gridResolution);
-  // Tăng từ 2 → 6 passes Gaussian để xóa facet TIN ở vùng dốc nhẹ
   heightmap = smoothHeightmap(heightmap, 6);
   const mesh = buildMeshFromHeightmap(heightmap);
   return {
@@ -29,6 +30,7 @@ async function buildTerrain(
     contours,
     bounds,
     rawRoadPolylines: rawRoads,
+    boundaryCandidates,
   };
 }
 

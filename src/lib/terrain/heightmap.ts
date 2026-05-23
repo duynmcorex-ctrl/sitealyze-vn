@@ -1,16 +1,23 @@
 import type { Heightmap } from '../types';
 import type { TIN } from './triangulate';
+import { pointInPolygon } from '../util/pointInPolygon';
 
 interface Bounds {
   minX: number; minY: number; maxX: number; maxY: number;
 }
 
+interface Point2D { x: number; y: number; }
+
 // Resample TIN sang heightmap đều bằng cách rasterize từng tam giác (barycentric).
+// KHÔNG còn boundary clip ở đây — clip được tách ra `applyBoundaryClip()` riêng
+// để gọi sau khi user pick boundary qua dropdown (tránh re-run TIN tốn kém).
 export function rasterizeTinToHeightmap(
   tin: TIN,
   bounds: Bounds,
-  targetCells = 256
+  targetCells = 256,
+  _boundary?: Point2D[],  // legacy param — kept for backward compat, unused
 ): Heightmap {
+  void _boundary;
   const w = bounds.maxX - bounds.minX;
   const h = bounds.maxY - bounds.minY;
   const aspect = w / h;
@@ -109,8 +116,23 @@ export function rasterizeTinToHeightmap(
   // Lưu mask trước khi lấp — mask=1 nghĩa là cell đã được rasterize thực sự
   const mask = new Uint8Array(filled); // copy trước khi fillHoles thay đổi filled
 
-  // ── Pass A: Mask dilation 3 passes (lấp rìa + lỗ nhỏ gần bề mặt) ─────────
-  for (let pass = 0; pass < 3; pass++) {
+  // Tính độ phủ ban đầu (% cell được rasterize từ TIN)
+  let initCovered = 0;
+  for (let i = 0; i < mask.length; i++) if (mask[i]) initCovered++;
+  const coveragePct = (initCovered / mask.length) * 100;
+
+  // ── Pass A: Mask dilation — ÍT pass khi terrain sparse ───────────────────
+  // Bug LLE-xr Exit: contour chỉ phủ ~5% diện tích → dilation 3 pass + fillHoles
+  // mở rộng vùng mesh quá xa data → TIN extrapolate ra wedge nghiêng.
+  // Fix: nếu coverage < 25%, chỉ dilate 1 pass (vừa đủ kín rìa, không over-extend).
+  const dilatePasses = coveragePct < 25 ? 1 : 3;
+  if (coveragePct < 25) {
+    console.warn(
+      `[heightmap] Terrain sparse: ${coveragePct.toFixed(1)}% coverage TIN ` +
+      `→ giảm dilation xuống ${dilatePasses} pass (tránh wedge nghiêng).`
+    );
+  }
+  for (let pass = 0; pass < dilatePasses; pass++) {
     const next = new Uint8Array(mask);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
@@ -127,8 +149,9 @@ export function rasterizeTinToHeightmap(
   // ── Pass B: Exterior flood-fill → lấp lỗ thủng nội bộ triệt để ─────────
   // Flood fill từ 4 viền canvas để tìm tất cả cell "bên ngoài" terrain.
   // Mọi cell không-bên-ngoài và không-trong-mask = lỗ thủng nội bộ → thêm vào mask.
-  // Phương pháp này lấp lỗ bất kỳ kích thước BÊN TRONG terrain mà KHÔNG mở rộng rìa ngoài.
-  {
+  // SKIP khi sparse: terrain phủ <25% → coi tất cả "bên ngoài" là exterior thật,
+  // KHÔNG seal interior (tránh extrapolate Z qua nửa site).
+  if (coveragePct >= 25) {
     const exterior = new Uint8Array(width * height);
     const extQ: number[] = [];
     for (let x = 0; x < width; x++) {
@@ -164,7 +187,7 @@ export function rasterizeTinToHeightmap(
   // Lấp data của các cell rỗng (rìa + lỗ) bằng láng giềng gần nhất
   fillHoles(data, filled, width, height);
 
-  // Cập nhật min/max sau khi lấp
+  // Cập nhật min/max sau khi lấp (tất cả cells — chưa có boundary clip)
   for (let i = 0; i < data.length; i++) {
     const z = data[i];
     if (Number.isFinite(z)) {
@@ -173,21 +196,117 @@ export function rasterizeTinToHeightmap(
     }
   }
 
+  const safeMinZ = Number.isFinite(minZ) ? minZ : 0;
+  const safeMaxZ = Number.isFinite(maxZ) ? maxZ : 0;
+  // Lưu originalMask + originalMin/Max để applyBoundaryClip có thể restore khi
+  // user switch giữa boundary candidates (mask gốc không bị phá khi clip).
   return {
     width, height, cellSize,
     origin: { x: bounds.minX, y: bounds.minY },
     data, mask,
-    minZ: Number.isFinite(minZ) ? minZ : 0,
-    maxZ: Number.isFinite(maxZ) ? maxZ : 0,
+    minZ: safeMinZ,
+    maxZ: safeMaxZ,
+    originalMask: new Uint8Array(mask),
+    originalMinZ: safeMinZ,
+    originalMaxZ: safeMaxZ,
+  };
+}
+
+/**
+ * applyBoundaryClip — Tạo Heightmap mới với mask đã clip theo polygon ranh giới.
+ *
+ * Dùng khi user pick boundary qua dropdown sau khi parse:
+ *  - Clone mask
+ *  - Set mask[i] = 0 cho cell có tâm nằm NGOÀI boundary polygon
+ *  - Recompute minZ/maxZ chỉ từ cells trong mask
+ *  - Return heightmap mới (data[] giữ nguyên, mask khác)
+ *
+ * Caller cần `buildMeshFromHeightmap(newHm)` để rebuild mesh sau đó.
+ *
+ * @param hm Heightmap gốc (đã rasterize, fillHoles, smooth)
+ * @param bounds DXF bounds (để map cell → world coord)
+ * @param boundary Polygon ranh giới (DXF coords)
+ * @returns Heightmap mới với mask clipped + minZ/maxZ recomputed
+ */
+export function applyBoundaryClip(
+  hm: Heightmap,
+  bounds: Bounds,
+  boundary: Point2D[],
+): Heightmap {
+  if (boundary.length < 3) return hm;
+  const { width, height, cellSize, data } = hm;
+  // Bắt đầu từ originalMask (mask gốc trước khi clip lần đầu) → switch giữa
+  // các candidate không phá data. Nếu chưa có originalMask, dùng mask hiện tại.
+  const baseMask = hm.originalMask ?? hm.mask ?? new Uint8Array(width * height).fill(1);
+  const newMask = new Uint8Array(baseMask);
+
+  let clipped = 0, kept = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!newMask[i]) continue;
+      const wx = bounds.minX + (x + 0.5) * cellSize;
+      const wy = bounds.minY + (y + 0.5) * cellSize;
+      if (pointInPolygon({ x: wx, y: wy }, boundary)) {
+        kept++;
+      } else {
+        newMask[i] = 0;
+        clipped++;
+      }
+    }
+  }
+
+  // Recompute min/max CHỈ từ cells trong mask
+  let newMinZ = Infinity, newMaxZ = -Infinity;
+  for (let i = 0; i < data.length; i++) {
+    if (!newMask[i]) continue;
+    const z = data[i];
+    if (Number.isFinite(z)) {
+      if (z < newMinZ) newMinZ = z;
+      if (z > newMaxZ) newMaxZ = z;
+    }
+  }
+  if (!Number.isFinite(newMinZ)) { newMinZ = hm.minZ; newMaxZ = hm.maxZ; }
+
+  console.log(
+    `[applyBoundaryClip] Clipped ${clipped} cells ngoài ranh giới, ` +
+    `giữ ${kept} cells (${(kept / (kept + clipped) * 100).toFixed(1)}% terrain). ` +
+    `Z range: ${newMinZ.toFixed(1)} → ${newMaxZ.toFixed(1)} m`
+  );
+
+  return {
+    ...hm,
+    mask: newMask,
+    minZ: newMinZ,
+    maxZ: newMaxZ,
+    // Giữ originalMask + originalMinZ/MaxZ để có thể switch tiếp
+    originalMask: hm.originalMask ?? baseMask,
+    originalMinZ: hm.originalMinZ ?? hm.minZ,
+    originalMaxZ: hm.originalMaxZ ?? hm.maxZ,
+  };
+}
+
+/**
+ * restoreOriginalMask — Trả lại mask gốc (bỏ clip).
+ * Dùng khi user chọn "Không clip" trong dropdown.
+ */
+export function restoreOriginalMask(hm: Heightmap): Heightmap {
+  if (!hm.originalMask) return hm;
+  return {
+    ...hm,
+    mask: new Uint8Array(hm.originalMask),
+    minZ: hm.originalMinZ ?? hm.minZ,
+    maxZ: hm.originalMaxZ ?? hm.maxZ,
   };
 }
 
 // Gaussian smoothing 3x3 nhẹ để làm mượt mesh + cập nhật min/max
+// QUAN TRỌNG: chỉ tính min/max trong mask (sau boundary clip ở rasterize).
+// Smoothing toàn bộ data nhưng min/max chỉ phản ánh cells SẼ RENDER.
 export function smoothHeightmap(hm: Heightmap, passes = 1): Heightmap {
-  const { width: w, height: h, data } = hm;
+  const { width: w, height: h, data, mask } = hm;
   let src: Float32Array = data;
   let dst: Float32Array = new Float32Array(src.length);
-  // Kernel Gaussian 3x3, sigma~1
   const k = [1, 2, 1, 2, 4, 2, 1, 2, 1];
   const kSum = 16;
   for (let p = 0; p < passes; p++) {
@@ -207,12 +326,20 @@ export function smoothHeightmap(hm: Heightmap, passes = 1): Heightmap {
     }
     [src, dst] = [dst, src];
   }
-  // src giờ chứa kết quả; copy về data gốc
+  // Copy result về data, tính min/max CHỈ trong mask
   let minZ = Infinity, maxZ = -Infinity;
   for (let i = 0; i < data.length; i++) {
     data[i] = src[i];
+    if (mask && !mask[i]) continue; // skip cells ngoài mask (sau boundary clip)
     if (src[i] < minZ) minZ = src[i];
     if (src[i] > maxZ) maxZ = src[i];
+  }
+  // Fallback nếu mask trống (KHÔNG có boundary)
+  if (!Number.isFinite(minZ)) {
+    for (let i = 0; i < data.length; i++) {
+      if (src[i] < minZ) minZ = src[i];
+      if (src[i] > maxZ) maxZ = src[i];
+    }
   }
   return { ...hm, minZ, maxZ };
 }

@@ -97,10 +97,38 @@ function tessArcBulge(
 
 // ── Tree layer detection ───────────────────────────────────────────────────────
 /** Layer name pattern: nhận dạng layer cây hiện trạng */
-const TREE_LAYER_RE = /(^|[_\-\s])(CAY|CX|TREE|TREET|VEGETATION|CAYXANH|CAY_HT|CAY_HH|GREEN|XANH)([_\-\s]|$)/i;
+const TREE_LAYER_RE = /(^|[_\-\s])(CAY|CX|TREE|TREET|VEGETATION|CAYXANH|CAY_HT|CAY_HH|GREEN|XANH|THONG|PINE|VEG|FOREST|RUNG|THUC[_\-\s]?VAT)([_\-\s]|$)/i;
 
 export function isTreeLayer(layerName: string): boolean {
   return TREE_LAYER_RE.test(layerName);
+}
+
+/** Block name pattern: nhận dạng BLOCK INSERT tree */
+const TREE_BLOCK_RE = /(tree|cay|conifer|deciduous|pine|thong|palm|coconut|bush|shrub)/i;
+
+export function isTreeBlock(blockName: string | undefined): boolean {
+  if (!blockName) return false;
+  return TREE_BLOCK_RE.test(blockName);
+}
+
+/** Content pattern: TEXT có nội dung tên cây — phạm vi rộng các loại cây phổ biến VN */
+const TREE_TEXT_RE = /(thông|pine|bàng|sấu|phượng|xà cừ|bằng lăng|cây\s|tree|cây\s*ăn|cây\s*xanh|cây\s*cổ|cây\s*to|cây\s*bụi|me|sao|dầu|xoan|keo|bạch đàn|gioi|tràm|đào|cau|dừa|cọ)/i;
+
+/** Trả về true nếu TEXT entity nên được coi là cây — dựa trên layer HOẶC content.
+ *  Logic broader (round 2):
+ *   - Layer match TREE_LAYER_RE → mọi TEXT trên layer đó = cây
+ *   - Content match TREE_TEXT_RE (tên loại cây)
+ *   - Content rất ngắn (1-3 chars) và có ký tự non-ASCII (CAD font symbol)
+ *   - Content single non-ASCII char (ký hiệu cây từ SHX font)
+ */
+export function isTreeText(layerName: string, textContent: string): boolean {
+  if (isTreeLayer(layerName)) return true;
+  if (!textContent || textContent.length === 0) return false;
+  const t = textContent.trim();
+  // Ký hiệu cây CAD: 1-3 char, có non-ASCII (Á, ♣, glyph từ TREE.shx)
+  if (t.length <= 3 && /[^\x20-\x7E]/.test(t)) return true;
+  // Vietnamese tree keywords
+  return TREE_TEXT_RE.test(t);
 }
 
 // ── Group types ────────────────────────────────────────────────────────────────
@@ -115,16 +143,22 @@ export interface OverlayGroup {
    * Lưu dạng thô trước khi convert world-space.
    */
   circles?: { x: number; y: number; r: number }[];
+  /** Vị trí tất cả TEXT/MTEXT entity trên layer này — để user có thể manually
+   *  mark layer là tree và dùng các vị trí TEXT làm vị trí cây. */
+  textPositions?: { x: number; y: number; content: string }[];
+  /** Stats: số entity gốc theo type (chẩn đoán) */
+  entityCounts?: { polyline: number; circle: number; text: number; insert: number };
 }
 
 // ── Main parser ───────────────────────────────────────────────────────────────
 
 const SKIP_TYPES = new Set([
-  'TEXT', 'MTEXT', 'ATTDEF', 'ATTRIB',
+  'ATTDEF', 'ATTRIB',
   'DIMENSION', 'HATCH', 'SOLID', 'IMAGE',
   'POINT', 'XLINE', 'RAY', 'LEADER', 'TOLERANCE',
   'VIEWPORT', 'WIPEOUT',
-  // NOTE: INSERT giờ được xử lý riêng cho tree detection, không skip hoàn toàn
+  // NOTE: TEXT/MTEXT giờ được xử lý cho tree detection (xem code dưới)
+  // NOTE: INSERT giờ được xử lý cho tree detection, không skip hoàn toàn
 ]);
 
 /** Parse overlay DXF → groups per CAD layer with original colours */
@@ -166,26 +200,67 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
     color: string;
     polys: { x: number; y: number }[][];
     circles: { x: number; y: number; r: number }[];
+    texts: { x: number; y: number; content: string }[];
+    counts: { polyline: number; circle: number; text: number; insert: number };
   }>();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function getGroup(layerName: string, color: string) {
-    if (!groups.has(layerName)) groups.set(layerName, { color, polys: [], circles: [] });
+    if (!groups.has(layerName)) {
+      groups.set(layerName, {
+        color, polys: [], circles: [], texts: [],
+        counts: { polyline: 0, circle: 0, text: 0, insert: 0 },
+      });
+    }
     return groups.get(layerName)!;
   }
 
   for (const ent of dxf.entities) {
     const type = (ent.type ?? '').toUpperCase();
 
-    // INSERT trên layer cây → đọc vị trí gốc như một điểm cây
+    // INSERT — đọc vị trí gốc như một điểm cây nếu:
+    //   1. Layer là tree layer, HOẶC
+    //   2. Block name (ent.name) match TREE_BLOCK_RE (vd block "TREE_01", "CAY_THONG")
     if (type === 'INSERT') {
       const layer = ent.layer ?? '0';
-      if (isTreeLayer(layer) && typeof ent.position?.x === 'number') {
+      const blockName: string | undefined = ent.name;
+      const isFromTreeLayer = isTreeLayer(layer);
+      const isFromTreeBlock = isTreeBlock(blockName);
+      if (typeof ent.position?.x === 'number') {
         const color = entityColor(ent, layer);
-        const g = getGroup(layer, color);
-        // Dùng xScale làm bán kính tán (nếu block được scale, mặc định 3m)
-        const r = Math.abs(ent.xScale ?? ent.yScale ?? 3);
-        g.circles.push({ x: ent.position.x, y: ent.position.y, r: r > 0.1 ? r : 3 });
+        const targetLayer = isFromTreeLayer ? layer
+                          : isFromTreeBlock ? `CAY_BLOCK_${(blockName ?? 'AUTO').toUpperCase()}`
+                          : layer;
+        const g = getGroup(targetLayer, color);
+        g.counts.insert++;
+        if (isFromTreeLayer || isFromTreeBlock) {
+          const r = Math.abs(ent.xScale ?? ent.yScale ?? 3);
+          g.circles.push({ x: ent.position.x, y: ent.position.y, r: r > 0.1 ? r : 3 });
+        }
+      }
+      continue;
+    }
+
+    // TEXT/MTEXT — lưu MỌI vị trí TEXT (để user có thể manual-tag layer = tree).
+    // Nếu match tree pattern → push vào circles để auto-detect; còn lại lưu vào texts.
+    if (type === 'TEXT' || type === 'MTEXT') {
+      const layer = ent.layer ?? '0';
+      const pos = ent.position ?? ent.startPoint ?? ent.insertionPoint;
+      const txt = ent.text ?? ent.string ?? '';
+      if (pos && typeof pos.x === 'number') {
+        const color = entityColor(ent, layer);
+        const isTree = isTreeText(layer, txt);
+        const targetLayer = isTree
+          ? (isTreeLayer(layer) ? layer : 'CAY_TEXT_AUTO')
+          : layer;
+        const g = getGroup(targetLayer, color);
+        g.counts.text++;
+        // Lưu MỌI vị trí TEXT vào g.texts (regardless of detection)
+        g.texts.push({ x: pos.x, y: pos.y, content: String(txt).slice(0, 30) });
+        // Nếu là tree → cũng push vào circles để auto-render
+        if (isTree) {
+          g.circles.push({ x: pos.x, y: pos.y, r: 3 });
+        }
       }
       continue;
     }
@@ -239,7 +314,7 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
         }
       }
 
-      if (pts.length >= 2) g.polys.push(pts);
+      if (pts.length >= 2) { g.polys.push(pts); g.counts.polyline++; }
 
     // ── LINE ──────────────────────────────────────────────────────────────
     } else if (type === 'LINE' && ent.start && ent.end) {
@@ -248,6 +323,7 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
           { x: ent.start.x, y: ent.start.y },
           { x: ent.end.x, y: ent.end.y },
         ]);
+        g.counts.polyline++;
       }
 
     // ── ARC ───────────────────────────────────────────────────────────────
@@ -256,10 +332,11 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
         ent.center.x, ent.center.y, ent.radius,
         ent.startAngle ?? 0, ent.endAngle ?? 360,
       );
-      if (pts.length >= 2) g.polys.push(pts);
+      if (pts.length >= 2) { g.polys.push(pts); g.counts.polyline++; }
 
     // ── CIRCLE ────────────────────────────────────────────────────────────
     } else if (type === 'CIRCLE' && ent.center && typeof ent.radius === 'number') {
+      g.counts.circle++;
       // Nếu layer là tree → lưu circle data riêng (để render dạng 3D instanced tree)
       // Vẫn tessellate polyline để hiển thị outline nếu user muốn
       if (isTreeLayer(layer)) {
@@ -311,12 +388,14 @@ export function parseOverlayDxfGroups(text: string): OverlayGroup[] {
   }
 
   return Array.from(groups.entries())
-    .filter(([, v]) => v.polys.length > 0 || v.circles.length > 0)
-    .map(([layerName, { color, polys, circles }]) => ({
+    .filter(([, v]) => v.polys.length > 0 || v.circles.length > 0 || v.texts.length > 0)
+    .map(([layerName, { color, polys, circles, texts, counts }]) => ({
       layerName,
       color,
       polylines: polys,
       ...(circles.length > 0 ? { circles } : {}),
+      ...(texts.length > 0 ? { textPositions: texts } : {}),
+      entityCounts: counts,
     }));
 }
 
@@ -337,25 +416,62 @@ export function parseOverlayDxf(text: string): OverlayPolyline[] {
 
 // ── World-space conversion ────────────────────────────────────────────────────
 
-/** Bilinear height sample from heightmap */
+type SampleResult =
+  | { kind: 'hit'; h: number }        // inside TIN coverage — real terrain height
+  | { kind: 'outside'; }              // outside TIN coverage (mask=0) but inside bbox
+  | { kind: 'outOfBounds' };          // outside heightmap bbox entirely
+
+/**
+ * Bilinear height sample from heightmap with three-way result:
+ *
+ * • `hit`         — point is inside real TIN coverage (mask=1). Use h.
+ * • `outside`     — point is inside the heightmap bbox but mask=0 (dilation /
+ *                   exterior-fill cell). The terrain was not rasterized here.
+ *                   Caller should continue the polyline at the last valid height
+ *                   so roads outside TIN don't plunge to a wedge Z.
+ * • `outOfBounds` — point is outside the heightmap bbox entirely.
+ *                   Caller should cut the polyline here.
+ *
+ * This three-way distinction prevents two failure modes:
+ *   1) Deep "V" dives: clamping to edge cells whose Z came from exterior fill
+ *      could be minZ (~36 m) while on-terrain Z is ~72 m → 36-m apparent dive.
+ *   2) Disappearing roads: rejecting all mask=0 points removes road segments
+ *      that lie outside (but adjacent to) the terrain cluster.
+ */
 function sampleHeight(
   px: number, py: number,
   bounds: { minX: number; minY: number; maxX: number; maxY: number },
-  hm: { width: number; height: number; cellSize: number; data: Float32Array },
-): number {
+  hm: { width: number; height: number; cellSize: number; data: Float32Array; mask?: Uint8Array },
+): SampleResult {
   const fx = (px - bounds.minX) / hm.cellSize;
   const fy = (py - bounds.minY) / hm.cellSize;
-  const c0 = Math.max(0, Math.min(hm.width - 1, Math.floor(fx)));
-  const r0 = Math.max(0, Math.min(hm.height - 1, Math.floor(fy)));
+  if (fx < 0 || fx > hm.width - 1 || fy < 0 || fy > hm.height - 1) {
+    return { kind: 'outOfBounds' };
+  }
+  const c0 = Math.floor(fx);
+  const r0 = Math.floor(fy);
   const c1 = Math.min(hm.width - 1, c0 + 1);
   const r1 = Math.min(hm.height - 1, r0 + 1);
+  const i00 = r0 * hm.width + c0;
+  const i01 = r0 * hm.width + c1;
+  const i10 = r1 * hm.width + c0;
+  const i11 = r1 * hm.width + c1;
+  // If mask exists, require all 4 bilinear-interpolation neighbors to be in
+  // real TIN coverage. If any is mask=0 (fill/dilation), report 'outside' so
+  // the caller can extend at the last-known TIN height instead of sampling a
+  // potentially wrong wedge value.
+  if (hm.mask) {
+    if (!hm.mask[i00] || !hm.mask[i01] || !hm.mask[i10] || !hm.mask[i11]) {
+      return { kind: 'outside' };
+    }
+  }
   const tx = fx - c0, ty = fy - r0;
   const h =
-    hm.data[r0 * hm.width + c0] * (1 - tx) * (1 - ty) +
-    hm.data[r0 * hm.width + c1] * tx * (1 - ty) +
-    hm.data[r1 * hm.width + c0] * (1 - tx) * ty +
-    hm.data[r1 * hm.width + c1] * tx * ty;
-  return Number.isFinite(h) ? h : 0;
+    hm.data[i00] * (1 - tx) * (1 - ty) +
+    hm.data[i01] * tx * (1 - ty) +
+    hm.data[i10] * (1 - tx) * ty +
+    hm.data[i11] * tx * ty;
+  return Number.isFinite(h) ? { kind: 'hit', h } : { kind: 'outside' };
 }
 
 /** Densify a 2-D polyline so no segment exceeds maxDist */
@@ -383,25 +499,51 @@ function densify(
 /**
  * Convert 2-D overlay polylines from DXF world coords → Three.js world space,
  * draping each point onto the terrain heightmap (bilinear + densified).
+ *
+ * Rule (user-specified):
+ *   • Z=0 file (flat terrain): all objects stay visible at flat ground level.
+ *   • Z>0 file (real terrain): objects ON terrain drape onto 3D surface;
+ *     objects OUTSIDE terrain remain visible at the last known terrain edge
+ *     height (or terrain floor if the polyline never crossed terrain at all).
+ *   → NEVER cut / hide any polyline — all base-map objects must be preserved.
  */
 export function overlayToWorldSpace(
   polylines: OverlayPolyline[],
   bounds: { minX: number; maxX: number; minY: number; maxY: number },
-  heightmap: { width: number; height: number; cellSize: number; data: Float32Array },
+  heightmap: { width: number; height: number; cellSize: number; data: Float32Array; mask?: Uint8Array; minZ?: number; maxZ?: number },
   elevationOffset = 2,
 ): { x: number; y: number; z: number }[][] {
   const cx = (bounds.maxX + bounds.minX) / 2;
   const cy = (bounds.maxY + bounds.minY) / 2;
-  const maxGap = heightmap.cellSize * 0.75; // densify to sub-cell resolution
+  const maxGap = heightmap.cellSize * 0.75;
+  // Terrain floor = minZ of heightmap (or 0 for flat files).
+  // Used as fallback Y for polyline points that lie outside TIN coverage.
+  const terrainFloor = heightmap.minZ ?? 0;
 
-  return polylines.map(({ points }) => {
+  const result: { x: number; y: number; z: number }[][] = [];
+  for (const { points } of polylines) {
     const dense = densify(points, maxGap);
-    return dense.map((p) => ({
-      x: p.x - cx,
-      y: sampleHeight(p.x, p.y, bounds, heightmap) + elevationOffset,
-      z: -(p.y - cy),
-    }));
-  });
+    const seg: { x: number; y: number; z: number }[] = [];
+    let lastValidH: number | null = null;   // last height from real TIN coverage
+
+    for (const p of dense) {
+      const sr = sampleHeight(p.x, p.y, bounds, heightmap);
+      let h: number;
+      if (sr.kind === 'hit') {
+        // Inside real TIN coverage → drape normally, update running height
+        lastValidH = sr.h;
+        h = sr.h;
+      } else {
+        // Outside TIN (dilation/fill zone) OR outside heightmap bbox entirely.
+        // Use the last known TIN edge height to continue the polyline flat,
+        // or fall back to terrain floor so the object is always visible.
+        h = lastValidH ?? terrainFloor;
+      }
+      seg.push({ x: p.x - cx, y: h + elevationOffset, z: -(p.y - cy) });
+    }
+    if (seg.length >= 2) result.push(seg);
+  }
+  return result;
 }
 
 /**
@@ -411,16 +553,22 @@ export function overlayToWorldSpace(
 export function circlesToTreePoints(
   circles: { x: number; y: number; r: number }[],
   bounds: { minX: number; maxX: number; minY: number; maxY: number },
-  hm: { width: number; height: number; cellSize: number; data: Float32Array },
+  hm: { width: number; height: number; cellSize: number; data: Float32Array; mask?: Uint8Array },
 ): import('../types').TreePoint[] {
   const cx = (bounds.maxX + bounds.minX) / 2;
   const cy = (bounds.maxY + bounds.minY) / 2;
-  return circles.map(({ x, y, r }) => ({
-    x: x - cx,
-    y: sampleHeight(x, y, bounds, hm),
-    z: -(y - cy),
-    crownRadius: r > 0.1 ? r : 3,  // bán kính tối thiểu 0.1m, mặc định 3m
-  }));
+  const out: import('../types').TreePoint[] = [];
+  for (const { x, y, r } of circles) {
+    const sr = sampleHeight(x, y, bounds, hm);
+    if (sr.kind !== 'hit') continue;  // tree ngoài TIN/bounds → không có đất để đứng
+    out.push({
+      x: x - cx,
+      y: sr.h,
+      z: -(y - cy),
+      crownRadius: r > 0.1 ? r : 3,
+    });
+  }
+  return out;
 }
 
 /**
@@ -429,7 +577,7 @@ export function circlesToTreePoints(
 export function groupToWorldSpace(
   group: OverlayGroup,
   bounds: { minX: number; maxX: number; minY: number; maxY: number },
-  heightmap: { width: number; height: number; cellSize: number; data: Float32Array },
+  heightmap: { width: number; height: number; cellSize: number; data: Float32Array; mask?: Uint8Array; minZ?: number; maxZ?: number },
   elevationOffset = 2,
 ): { x: number; y: number; z: number }[][] {
   const polys: OverlayPolyline[] = group.polylines.map((pts) => ({ points: pts }));

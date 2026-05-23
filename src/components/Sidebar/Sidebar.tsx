@@ -1,84 +1,66 @@
-import { FileText } from 'lucide-react';
-import { FileUpload } from './FileUpload';
-import { EnvParams } from './EnvParams';
-import { ModeSelector } from './ModeSelector';
-import { ViewpointTool } from './ViewpointTool';
-import { ExportPanel } from './ExportPanel';
-import { LayerPanel } from './LayerPanel';
-import { LandusePanel } from './LandusePanel';
-import { ProjectsPanel } from './ProjectsPanel';
-import { ProjectInfoPanel } from './ProjectInfoPanel';
-import { ClimatePanel } from './ClimatePanel';
-import { useSiteStore } from '../../store/useSiteStore';
+/**
+ * Sidebar.tsx — v0.7.0
+ * 6 mục CollapsiblePanel kiểu SketchUp Default Tray + resize handle.
+ */
+
+import { useState, useEffect } from 'react';
+import { CollapsiblePanel } from './CollapsiblePanel';
+import { ResizeHandle, getStoredSidebarWidth } from './ResizeHandle';
+import { ProjectManagementSection } from './sections/ProjectManagementSection';
+import { GeneralInfoSection }       from './sections/GeneralInfoSection';
+import { EvaluationSection }        from './sections/EvaluationSection';
+import { PlanningSection }          from './sections/PlanningSection';
+import { SimulationSection }        from './sections/SimulationSection';
+import { ReportSection }            from './sections/ReportSection';
 
 export function Sidebar() {
-  const terrain       = useSiteStore((s) => s.terrain);
-  const generateRpt   = useSiteStore((s) => s.generateReport);
-  const reportLoading = useSiteStore((s) => s.reportLoading);
+  const [width, setWidth] = useState<number>(() => getStoredSidebarWidth());
+
+  // Set CSS var on mount with initial value
+  useEffect(() => {
+    document.documentElement.style.setProperty('--sidebar-w', width + 'px');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Đồng bộ sidebar width vào CSS custom property để ReportPanel + các overlay fixed
+  // có thể dùng `right: calc(var(--sidebar-w) + Xpx)` mà không hardcode 336px
+  const handleResize = (w: number) => {
+    setWidth(w);
+    document.documentElement.style.setProperty('--sidebar-w', w + 'px');
+  };
 
   return (
-    <aside className="w-80 panel border-l overflow-y-auto">
-      <div className="p-4 space-y-5">
-        <Section title="1. Tải dữ liệu địa hình">
-          <FileUpload />
-        </Section>
-        <Section title="2. Thông tin dự án">
-          <ProjectInfoPanel />
-        </Section>
-        <Section title="3. Quản lý dự án">
-          <ProjectsPanel />
-        </Section>
-        <Section title="4. Lớp dữ liệu">
-          <LayerPanel />
-        </Section>
-        <Section title="5. Tham số hiện trạng">
-          <EnvParams />
-        </Section>
-        <Section title="6. Chế độ phân tích">
-          <ModeSelector />
-        </Section>
-        <Section title="7. Quy hoạch sử dụng đất">
-          <LandusePanel />
-        </Section>
-        <Section title="8. Phân tích Khí hậu & Bố trí chức năng">
-          <ClimatePanel />
-        </Section>
-        <Section title="9. Công cụ điểm nhìn">
-          <ViewpointTool />
-        </Section>
-        <Section title="10. Báo cáo phân tích">
-          <button
-            onClick={() => generateRpt()}
-            disabled={!terrain || reportLoading}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg
-                        text-sm font-semibold transition border
-                        ${terrain && !reportLoading
-                          ? 'bg-accent-teal/15 border-accent-teal/40 text-accent-teal hover:bg-accent-teal/25'
-                          : 'bg-bg-card border-white/8 text-slate-600 cursor-not-allowed'}`}
-          >
-            {reportLoading
-              ? <div className="w-4 h-4 border-2 border-accent-teal border-t-transparent rounded-full animate-spin" />
-              : <FileText size={15} />
-            }
-            {reportLoading ? 'Đang sinh báo cáo…' : 'Sinh báo cáo phân tích'}
-          </button>
-          {!terrain && (
-            <p className="text-[10px] text-slate-600 text-center">Tải file DXF trước để kích hoạt</p>
-          )}
-        </Section>
-        <Section title="11. Xuất dữ liệu">
-          <ExportPanel />
-        </Section>
+    <aside
+      className="relative panel border-l overflow-y-auto shrink-0"
+      style={{ width }}
+    >
+      <ResizeHandle width={width} onChange={handleResize} />
+
+      <div className="p-3 pt-3 pl-4">
+        <CollapsiblePanel id="projects" number="0" title="Quản lý dự án" color="blue" defaultOpen>
+          <ProjectManagementSection />
+        </CollapsiblePanel>
+
+        <CollapsiblePanel id="general" number="1" title="Thông tin chung" color="slate">
+          <GeneralInfoSection />
+        </CollapsiblePanel>
+
+        <CollapsiblePanel id="evaluation" number="2" title="Đánh giá hiện trạng" color="green">
+          <EvaluationSection />
+        </CollapsiblePanel>
+
+        <CollapsiblePanel id="planning" number="3" title="Phương án quy hoạch" color="amber">
+          <PlanningSection />
+        </CollapsiblePanel>
+
+        <CollapsiblePanel id="simulation" number="4" title="Mô phỏng" color="red">
+          <SimulationSection />
+        </CollapsiblePanel>
+
+        <CollapsiblePanel id="report" number="5" title="Báo cáo" color="purple">
+          <ReportSection />
+        </CollapsiblePanel>
       </div>
     </aside>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <div className="label-section">{title}</div>
-      <div className="space-y-3">{children}</div>
-    </section>
   );
 }

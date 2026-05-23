@@ -1,45 +1,101 @@
 # SiteAlyze VN — Lịch sử phiên bản
 
-Folder này chứa **snapshot dist đã build** của từng phiên bản ổn định.
-Mỗi subfolder = 1 phiên bản, có thể mở offline không cần build lại.
+Folder này chứa **snapshot đã build** của từng phiên bản ổn định.
+Mỗi subfolder = 1 phiên bản, có thể mở offline mà không cần npm/build lại.
 
-## Cấu trúc
+---
+
+## 🚀 Cách lưu phiên bản hiện tại (1 lệnh)
+
+**Trước khi update lớn**, hãy chạy script sau để lưu phiên bản đang dùng:
+
+```bat
+scripts\save-version.bat v0.7.0-sidebar-redesign
+```
+
+Script tự động sẽ:
+1. ✅ Chạy `npm run build` → tạo `dist/`
+2. ✅ Copy `dist/` sang `versions/v0.7.0-sidebar-redesign/`
+3. ✅ Tạo file `MO_APP.bat` để mở nhanh
+4. ✅ Tạo `git tag v0.7.0-sidebar-redesign` để có thể `git checkout` về sau
+
+**Quy tắc đặt tên version:**
+- Format: `vX.Y.Z-mô-tả-ngắn`
+- Ví dụ: `v0.6.0-flood-climate`, `v0.7.0-sidebar-redesign`, `v0.8.0-kmz-upload`
+
+---
+
+## 📂 Cấu trúc
+
 ```
 versions/
-├── README.md                ← file này
-├── v0.4.0-stable/          ← snapshot dist đã build
+├── README.md                      ← file này
+├── v0.6.0-flood-climate/          ← snapshot dist
 │   ├── index.html
 │   ├── assets/
-│   └── ▶ MO_APP.bat        ← double-click để chạy
-├── v0.5.5-terrain-fix/
-└── v0.6.0-flood-climate/   ← phiên bản mới nhất
+│   ├── libredwg-web.wasm
+│   └── MO_APP.bat                 ← double-click để chạy
+└── v0.7.0-sidebar-redesign/
+    └── ...
 ```
 
-## Cách tạo snapshot phiên bản mới
+Mỗi snapshot là **một bản build hoàn chỉnh** — chạy được offline.
 
-1. Chạy build: `npm run build` (trong terminal tại thư mục gốc)
-2. Chạy script: `scripts\snapshot-version.bat <tên-version>`
+---
 
-   Ví dụ:
-   ```
-   scripts\snapshot-version.bat v0.6.0-flood-climate
-   ```
+## 🌐 Cách mở 1 phiên bản cũ
 
-3. Folder mới xuất hiện trong `versions\v0.6.0-flood-climate\`
+1. Mở folder version: `versions\v0.6.0-flood-climate\`
+2. **Double-click** file `MO_APP.bat`
+3. Trình duyệt tự mở phiên bản đó ở `http://localhost:8086`
 
-## Cách mở 1 phiên bản cũ
+> Mỗi version dùng 1 port riêng (8080 + minor version) → chạy đồng thời nhiều version để **so sánh trực tiếp**.
 
-Double-click `▶ MO_APP.bat` trong thư mục phiên bản muốn xem.
-Trình duyệt tự mở tại `http://localhost:808X`.
+---
 
-## Câu hỏi về đổi tên folder dự án
+## 🔁 Cách quay về code cũ để chỉnh sửa (qua Git)
 
-**"Buld web hien trang" → "Build web hien trang"**
+Nếu chỉ cần xem giao diện cũ → dùng cách `MO_APP.bat` ở trên.
 
-Bạn **CÓ THỂ** đổi tên folder qua Windows Explorer (chuột phải → Rename).
-Tuy nhiên sau khi đổi, cần:
-1. Mở lại Claude Code với đường dẫn mới
-2. Cập nhật `scripts\build-all-versions.bat` nếu có hardcode đường dẫn cũ
-3. Git vẫn hoạt động bình thường (git lưu theo relative path)
+Nếu cần **chỉnh sửa code phiên bản cũ**:
 
-Không cần thay đổi gì trong code nguồn — tất cả đường dẫn trong code đều relative.
+```bash
+# Xem các tag có
+git tag -l
+
+# Checkout vào tag cũ (vd v0.6.0-flood-climate)
+git checkout v0.6.0-flood-climate
+
+# (Tuỳ chọn) Tạo branch mới để sửa
+git checkout -b fix-v0.6.0
+
+# Quay về phiên bản mới nhất
+git checkout main
+```
+
+Hoặc **so sánh code** giữa 2 phiên bản:
+
+```bash
+git diff v0.6.0-flood-climate v0.7.0-sidebar-redesign -- src/components/Sidebar/Sidebar.tsx
+```
+
+---
+
+## ⚠️ Quy tắc làm việc (best practice)
+
+| Khi nào | Việc cần làm |
+|---|---|
+| Trước khi merge thay đổi UI lớn | `scripts\save-version.bat vX.Y.Z-...` |
+| Sau khi fix bug quan trọng | `scripts\save-version.bat vX.Y.Z-fix-...` |
+| Mỗi tuần | Snapshot 1 lần, kể cả không có thay đổi lớn |
+
+Folder `versions/` được loại trừ khỏi git (`.gitignore` chứa `versions/v*/`), nên không làm phình repo.
+
+---
+
+## 📋 Lịch sử các phiên bản
+
+| Version | Mô tả | Cách mở |
+|---------|-------|---------|
+| **v0.6.0-flood-climate** | Flood sim 3D + climate panel + topographic gradient | `versions\v0.6.0-flood-climate\MO_APP.bat` |
+| **v0.7.0-sidebar-redesign** | 6 mục collapsible SketchUp-style + scene save + SWOT + resize | (chạy `save-version.bat v0.7.0-sidebar-redesign` để tạo) |

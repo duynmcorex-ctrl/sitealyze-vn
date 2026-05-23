@@ -42,10 +42,75 @@ function slopeScore(sl: number): number {
   return 0;
 }
 
+export interface SuitabilityOptions {
+  /** Bật phạt vùng ngập (Z < waterLevel × 0.3, gần mặt nước × 0.5-1.0).
+   *  Khắc phục lỗi: thung lũng phẳng được điểm cao dù dễ ngập. */
+  applyFloodPenalty?: boolean;
+  /** Mực nước mô phỏng từ flood mode (m). Nếu không truyền/<minZ:
+   *  fallback dùng percentile 5% heightmap (proxy cho lòng sông/đáy thấp). */
+  waterLevel?: number;
+}
+
+/** Compute distance-to-water mask: cells với Z ≤ waterZ HOẶC mask=0 */
+function buildDistToWater(hm: Heightmap, waterZ: number): Float32Array {
+  const n = hm.width * hm.height;
+  const dist = new Float32Array(n);
+  const INF = Infinity;
+  for (let i = 0; i < n; i++) {
+    const z = hm.data[i];
+    dist[i] = (!Number.isFinite(z) || z <= waterZ) ? 0 : INF;
+  }
+  // 2-pass Chamfer 3-4 distance transform
+  const w = hm.width, h = hm.height;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (dist[i] === 0) continue;
+      let d = dist[i];
+      if (y > 0)             d = Math.min(d, dist[(y-1)*w + x] + 1);
+      if (x > 0)             d = Math.min(d, dist[ y   *w + x-1] + 1);
+      if (x > 0 && y > 0)    d = Math.min(d, dist[(y-1)*w + x-1] + 1.4142);
+      if (x < w-1 && y > 0)  d = Math.min(d, dist[(y-1)*w + x+1] + 1.4142);
+      dist[i] = d;
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x;
+      if (dist[i] === 0) continue;
+      let d = dist[i];
+      if (y < h-1)              d = Math.min(d, dist[(y+1)*w + x] + 1);
+      if (x < w-1)              d = Math.min(d, dist[ y   *w + x+1] + 1);
+      if (x < w-1 && y < h-1)   d = Math.min(d, dist[(y+1)*w + x+1] + 1.4142);
+      if (x > 0 && y < h-1)     d = Math.min(d, dist[(y+1)*w + x-1] + 1.4142);
+      dist[i] = d;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (dist[i] === INF) dist[i] = 1e6;
+    else dist[i] *= hm.cellSize;
+  }
+  return dist;
+}
+
+/** Quantile của Z thực (loại NaN) */
+function quantileZ(hm: Heightmap, q: number): number {
+  const arr: number[] = [];
+  for (let i = 0; i < hm.data.length; i++) {
+    const z = hm.data[i];
+    if (Number.isFinite(z)) arr.push(z);
+  }
+  if (arr.length === 0) return hm.minZ;
+  arr.sort((a, b) => a - b);
+  const idx = Math.min(arr.length - 1, Math.max(0, Math.floor(arr.length * q)));
+  return arr[idx];
+}
+
 export function computeSuitability(
   hm: Heightmap,
   slope: SlopeData,
-  hydro: HydrologyData
+  hydro: HydrologyData,
+  opt: SuitabilityOptions = {},
 ): SuitabilityData {
   const { width: w, height: h } = hm;
   const n = w * h;
@@ -59,6 +124,15 @@ export function computeSuitability(
     if (v > maxAccumLog) maxAccumLog = v;
   }
   if (maxAccumLog === 0) maxAccumLog = 1;
+
+  // ── Flood-aware penalty (cải tiến mới) ─────────────────────────────────
+  // Lấy waterZ: ưu tiên waterLevel từ flood mode; nếu không có → percentile 5%
+  // (proxy cho đáy thấp / lòng sông). distToWater cho mỗi cell tính qua BFS.
+  const applyFlood = opt.applyFloodPenalty !== false;
+  const lowQ = quantileZ(hm, 0.05);
+  const waterZ = (typeof opt.waterLevel === 'number' && opt.waterLevel > hm.minZ)
+    ? opt.waterLevel : lowQ;
+  const distWater = applyFlood ? buildDistToWater(hm, waterZ) : null;
 
   for (let i = 0; i < n; i++) {
     const sl = slope.slopeDeg[i];
@@ -87,7 +161,24 @@ export function computeSuitability(
     // Multiplicative: slope là hệ số nhân lên điểm slope (0-40) + bonus khác
     // → slope dốc => slopeFactor nhỏ => tổng score nhỏ, kể cả bonus khác cao
     const otherBonuses = hydroPts + aspectPts + zPts;
-    score[i] = slopeFactor * 40 + slopeFactor * otherBonuses;
+    let s = slopeFactor * 40 + slopeFactor * otherBonuses;
+
+    // ── Flood penalty (cải tiến) ────────────────────────────────────────
+    if (applyFlood && distWater) {
+      const z = hm.data[i];
+      // Cell dưới mực nước → giảm điểm mạnh
+      if (Number.isFinite(z) && z < waterZ) {
+        s *= 0.3;
+      } else {
+        // Cell trong 30m từ mặt nước → smooth penalty 0.5..1.0
+        const d = distWater[i];
+        if (d < 30) {
+          s *= 0.5 + 0.5 * (d / 30);
+        }
+      }
+    }
+
+    score[i] = s;
   }
 
   // Làm mịn score 3 passes để xóa vệt còn lại từ accumulation flow

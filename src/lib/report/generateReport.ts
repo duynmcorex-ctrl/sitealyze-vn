@@ -49,16 +49,24 @@ export function buildReport(input: ReportInput): Report {
     ? histogramAspect(slope.aspectDeg, slope.slopeDeg, hm.mask)
     : undefined;
 
+  // Thứ tự khớp với tabs "Đánh giá hiện trạng" (mục 2):
+  // 1. Điều kiện tự nhiên (Nắng, Gió)
+  // 2. View (Đặc trưng địa hình, Tầm nhìn)
+  // 3. Địa hình (Cao độ, Đường đồng mức)
+  // 4. Độ dốc
+  // 5. Quỹ đất xây dựng
+  // 6. Thủy văn
+  // 7. Giao thông
   const sections = [
-    buildElevationSection(hm, features, slope, aspectHist),
-    buildSlopeSection(hm, slope, slopeMode),
-    buildContourSection(hm, contours, env.contourInterval),
-    buildFeaturesSection(hm, features),
-    buildHydrologySection(hm, hydro),
-    buildSuitabilitySection(hm, suitability),
     buildSunSection(hm, env, aspectHist, geo),
     buildWindSection(env, aspectHist, geo),
+    buildFeaturesSection(hm, features),
     buildViewshedSection(hm, viewshed, viewpoint ?? null),
+    buildElevationSection(hm, features, slope, aspectHist),
+    buildContourSection(hm, contours, env.contourInterval),
+    buildSlopeSection(hm, slope, slopeMode),
+    buildSuitabilitySection(hm, suitability),
+    buildHydrologySection(hm, hydro),
     buildRoadsSection(roadLayers?.length ? analyzeRoads(roadLayers, hm) : undefined, roadLayers),
   ];
 

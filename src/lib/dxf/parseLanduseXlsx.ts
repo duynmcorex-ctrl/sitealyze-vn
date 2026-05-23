@@ -25,9 +25,21 @@ interface ColumnMap {
   population?: number;
 }
 
-/** Match header text với key chuẩn — flexible Vietnamese + English */
+/**
+ * removeDiacritics — Strip dấu tiếng Việt để khớp regex bằng ASCII.
+ * Bao gồm: tổ hợp combining marks (NFD) + chuyển "đ"/"Đ" → "d"/"D".
+ * "đ" (U+0111) là ký tự độc lập, không phải "d" + dấu — phải replace riêng.
+ */
+function removeDiacritics(s: string): string {
+  return s.normalize('NFD')
+          // eslint-disable-next-line no-misleading-character-class
+          .replace(/[̀-ͯ]/g, '')
+          .replace(/đ/g, 'd').replace(/Đ/g, 'D');
+}
+
+/** Match header text với key chuẩn — flexible Vietnamese + English (sau khi strip dấu) */
 function matchHeader(header: string): keyof ColumnMap | null {
-  const h = header.toLowerCase().replace(/[\s_\-./()]/g, '');
+  const h = removeDiacritics(header).toLowerCase().replace(/[\s_\-./()]/g, '');
   // Order matters: "diện tích" trước "mật độ" để khớp đúng
   if (/(^ma$|kyhieu|code|^kh$)/.test(h)) return 'code';
   if (/(dientich|^dt$|area|s\(m)/.test(h)) return 'area';
@@ -61,39 +73,95 @@ export function parseLanduseXlsx(buffer: ArrayBuffer): {
     return { indicators: [], warnings: ['File Excel không có sheet nào.'] };
   }
 
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  // Duyệt TẤT CẢ sheets — nhiều file có sheet "Bảng SDD" hay "Chỉ tiêu" thay vì sheet đầu
+  let bestResult: { rows: unknown[][]; headerRowIdx: number; colMap: ColumnMap; sheetName: string } | null = null;
 
-  // Tìm header row: row đầu tiên có >= 2 cell match keyword
-  let headerRowIdx = -1;
-  let colMap: ColumnMap | null = null;
+  for (const sheetName of wb.SheetNames) {
+    const sheet = wb.Sheets[sheetName];
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 
-  for (let r = 0; r < Math.min(rows.length, 10); r++) {
-    const row = rows[r];
-    if (!row || row.length === 0) continue;
-    const candidate: Partial<ColumnMap> = {};
-    for (let c = 0; c < row.length; c++) {
-      const cell = row[c];
-      if (typeof cell !== 'string') continue;
-      const key = matchHeader(cell);
-      if (key && candidate[key] === undefined) candidate[key] = c;
+    // Scan deeper: up to 30 rows (nhiều file có title merged + sub-header rows)
+    // Cũng try multi-row header: gộp 2 row liền nhau làm header (xử lý merged cell)
+    for (let r = 0; r < Math.min(rows.length, 30); r++) {
+      const row = rows[r];
+      if (!row || row.length === 0) continue;
+
+      // Single row check
+      const candidate1: Partial<ColumnMap> = {};
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
+        if (typeof cell !== 'string') continue;
+        const key = matchHeader(cell);
+        if (key && candidate1[key] === undefined) candidate1[key] = c;
+      }
+
+      // Multi-row check: gộp row + (row+1) — nhiều file VN có 2-row header
+      // (vd row r = "Tầng cao", row r+1 = "tối đa (tầng)")
+      const candidate2: Partial<ColumnMap> = { ...candidate1 };
+      const nextRow = rows[r + 1] ?? [];
+      const maxLen = Math.max(row.length, nextRow.length);
+      for (let c = 0; c < maxLen; c++) {
+        const combined = `${row[c] ?? ''} ${nextRow[c] ?? ''}`.trim();
+        if (combined.length < 2) continue;
+        const key = matchHeader(combined);
+        if (key && candidate2[key] === undefined) candidate2[key] = c;
+      }
+
+      // Chọn candidate tốt hơn (nhiều cột match hơn)
+      const count = (c: Partial<ColumnMap>) =>
+        ['code', 'area', 'maxDensity', 'maxFloors', 'far', 'population']
+          .filter(k => c[k as keyof ColumnMap] !== undefined).length;
+      const c1 = count(candidate1);
+      const c2 = count(candidate2);
+      const best = c2 > c1 ? candidate2 : candidate1;
+      const bestCount = Math.max(c1, c2);
+
+      // Yêu cầu: có cột code + ít nhất 1 cột chỉ tiêu (giảm threshold để dễ match)
+      if (best.code !== undefined && bestCount >= 2) {
+        bestResult = {
+          rows,
+          headerRowIdx: r,
+          colMap: best as ColumnMap,
+          sheetName,
+        };
+        break;
+      }
     }
-    // Yêu cầu tối thiểu: có cột code + ít nhất 1 cột chỉ tiêu khác
-    const otherCols = ['area', 'maxDensity', 'maxFloors', 'far', 'population']
-      .filter(k => candidate[k as keyof ColumnMap] !== undefined).length;
-    if (candidate.code !== undefined && otherCols >= 1) {
-      headerRowIdx = r;
-      colMap = candidate as ColumnMap;
-      break;
-    }
+    if (bestResult) break;
   }
 
+  // Unpack for backward-compat with code below
+  const rows = bestResult?.rows ?? XLSX.utils.sheet_to_json<unknown[]>(
+    wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null }
+  );
+  const headerRowIdx = bestResult?.headerRowIdx ?? -1;
+  const colMap = bestResult?.colMap ?? null;
+
   if (headerRowIdx < 0 || !colMap) {
+    // Liệt kê các header thực tế đọc được TỪ TẤT CẢ sheets để giúp user debug
+    const foundHeaders: string[] = [];
+    for (const sheetName of wb.SheetNames) {
+      const sheet = wb.Sheets[sheetName];
+      const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+      for (let r = 0; r < Math.min(sheetRows.length, 30); r++) {
+        const row = sheetRows[r];
+        if (!row) continue;
+        for (const cell of row) {
+          if (typeof cell === 'string' && cell.trim().length > 1 && cell.trim().length < 50) {
+            foundHeaders.push(cell.trim());
+          }
+        }
+      }
+    }
+    const uniqueHeaders = Array.from(new Set(foundHeaders)).slice(0, 20);
     return {
       indicators: [],
       warnings: [
         'Không tìm thấy header phù hợp trong file Excel. ' +
-        'Cần ít nhất 2 cột với tên: "Mã", "Diện tích", "Mật độ", "Tầng", "FAR", "Dân số".',
+        'Cần TỐI THIỂU 2 cột với tên: "Mã/Ký hiệu" + 1 trong các cột {"Diện tích", "MĐXD/Mật độ", "Tầng cao", "FAR", "Dân số"}. ' +
+        `Đã quét ${wb.SheetNames.length} sheet × 30 row đầu. ` +
+        (uniqueHeaders.length > 0 ? `Header tìm thấy: ${uniqueHeaders.join(' | ')}` : 'Không có cell text nào.') +
+        ' — Gợi ý: file của bạn có thể chứa chỉ tiêu trong DXF (vòng tròn A/B/C/D/E/G), thử upload chỉ DXF (không cần Excel).',
       ],
     };
   }

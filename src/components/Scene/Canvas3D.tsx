@@ -1,4 +1,4 @@
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Suspense, useMemo } from 'react';
 import { TerrainMesh } from './TerrainMesh';
@@ -7,15 +7,43 @@ import { ContourLines } from './ContourLines';
 import { FlowArrows } from './FlowArrows';
 import { FeatureMarkers } from './FeatureMarkers';
 import { LanduseLayer } from './LanduseLayer';
+import { MCALayer } from './MCALayer';
 import { SunLight } from './SunLight';
 import { WindParticles } from './WindParticles';
+import { WindParticlesV2 } from './WindParticlesV2';
 import { ViewpointMarker } from './ViewpointMarker';
 import { OverlayLayerRenderer } from './OverlayLayerRenderer';
 import { RoadsRender } from './RoadsRender';
 import { AutoFit } from './AutoFit';
 import { CameraPreset } from './CameraPreset';
 import { TreeInstances } from './TreeInstances';
+import { FloodMesh } from './FloodMesh';
+import { SceneCapturer } from './SceneCapturer';
+import { SceneTweener } from './SceneTweener';
+import { ClickedPointMarker } from './ClickedPointMarker';
 import { useSiteStore } from '../../store/useSiteStore';
+
+/**
+ * AzimuthSync: component bên trong Canvas — dùng useFrame để đọc azimuth
+ * từ camera và cập nhật store mỗi frame. Dùng cho Compass bên ngoài.
+ */
+function AzimuthSync() {
+  const { camera } = useThree();
+  const setCameraAzimuth = useSiteStore(s => s.setCameraAzimuth);
+  useFrame(() => {
+    // Camera ở vị trí (x, y, z), target mặc định là origin.
+    // Azimuth = góc trên mặt phẳng XZ từ trục -Z: atan2(x, z)
+    const azimuth = Math.atan2(camera.position.x, camera.position.z);
+    setCameraAzimuth(azimuth);
+  });
+  return null;
+}
+
+/** Toggle V1/V2 wind particles bên trong Canvas (cần đọc store) */
+function WindParticlesWrapper() {
+  const vis = useSiteStore((s) => s.env.windVisualization);
+  return vis === 'v2' ? <WindParticlesV2 /> : <WindParticles />;
+}
 
 export function Canvas3D() {
   const terrain         = useSiteStore((s) => s.terrain);
@@ -93,12 +121,19 @@ export function Canvas3D() {
             {(mode === 'contour' || showContourOverlay) && <ContourLines />}
             {mode === 'hydrology' && <FlowArrows />}
             {mode === 'features' && <FeatureMarkers />}
-            {mode === 'landuse' && <LanduseLayer />}
+            {/* LanduseLayer tự kiểm tra: render khi mode='landuse' HOẶC showMassing3D */}
+            <LanduseLayer />
+            {/* MCALayer tự kiểm tra: render khi mode='mca' */}
+            <MCALayer />
             {mode === 'sun' && <SunLight />}
-            {mode === 'wind' && <WindParticles />}
+            {mode === 'wind' && <WindParticlesWrapper />}
             {mode === 'viewshed' && <ViewpointMarker />}
             <OverlayLayerRenderer />
             <RoadsRender />
+            {/* Mô phỏng ngập lụt 3D — plane bán trong suốt tại mực nước */}
+            <FloodMesh />
+            {/* Marker cao độ tại điểm click */}
+            <ClickedPointMarker />
             {/* Cây hiện trạng — instanced, chỉ hiện khi toggle bật */}
             {showTrees && treesToRender.length > 0 && (
               <TreeInstances trees={treesToRender} />
@@ -115,8 +150,11 @@ export function Canvas3D() {
           <gridHelper args={[200, 20, '#1f2937', '#1f2937']} position={[0, -0.01, 0]} />
         )}
       </Suspense>
+      <AzimuthSync />
       <AutoFit />
       <CameraPreset />
+      <SceneCapturer />
+      <SceneTweener />
       <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
     </Canvas>
   );
