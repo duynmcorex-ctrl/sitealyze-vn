@@ -1,0 +1,832 @@
+﻿Total pages: 61
+--- PAGE 1 ---
+TRƯỜNG ĐẠI HỌC KIẾN TRÚC HÀ NỘI
+ỨNG DỤNG GIS VÀ TRÍ TUỆ NHÂN TẠO
+TRONG ĐÁNH GIÁ QUỸ ĐẤT XÂY DỰNG ĐỐI VỚI
+ĐỒ ÁN QUY HOẠCH CHI TIẾT
+NHÓM SINH VIÊN:
+NGUYỄN THỊ QUỲNH ANH -2022Q2
+HÀ MINH NGỌC -2022Q2
+ĐÀO MINH QUANG -2022Q2
+NGUYỄN ĐĂNG KHOA -2022CN2
+NGUYỄN THỦY TIÊN -2022CN2
+GIẢNG VIÊN HƯỚNG DẪN:
+TS. KTS. LƯƠNG TIẾN DŨNG
+TS. NGUYỄN QUỐC HUY
+
+--- PAGE 2 ---
+1. NGHIÊN CỨU TỔNG QUAN & LÝ THUYẾT
+2. XỬ LÝ DỮ LIỆU KHÔNG GIAN (GIS Master)
+3. XÂY DỰNG & HUẤN LUYỆN MÔ HÌNH AI (AI
+Developer)
+NỘI DUNG
+4. KIỂM CHỨNG KHẢ NĂNG HỖ TRỢ VÀ ĐƯA RA
+QUYẾT ĐỊNH QUY HOẠCH CỦA MÔ HÌNH AI
+5. ỨNG DỤNG THỰC NGHIỆM & PHÂN TÍCH QUY
+HOẠCH (Planning Expert)
+6. KẾT LUẬN & KIẾN NGHỊ
+Trường đại học kiến trúc Hà Nội
+
+--- PAGE 3 ---
+PHẦN 1: NGHIÊN CỨU
+TỔNG QUAN & LÝ THUYẾT
+
+--- PAGE 4 ---
+1.1. LÝ DO CHỌN ĐỀ TÀI
+Bối cảnh thực tiễn Thách thức thực tế và Định hướng công nghệ
+1 2 3
+và Cơ sở pháp lý Hạn chế của phương pháp cũ và Mục tiêu giải pháp
+Nhu cầu thực tiễn: Việt Nam đang Hạn chế của phương pháp truyền Xu hướng công nghệ: Bối cảnh chuyển
+phát triển mạnh mẽ, nhu cầu lập quy thống: Việc đánh giá bằng phương đổi số đòi hỏi phải đổi mới sáng tạo, ứng
+hoạch chi tiết 1/500 làm cơ sở triển pháp bản đồ hiện nay thường tách dụng các công nghệ tiên tiến (GIS, AI,
+khai các dự án đầu tư xây dựng tăng rời từng lớp dữ liệu (địa hình, thủy viễn thám, mô hình 3D, phân tích đa tiêu
+cao. văn,
+
+--- PAGE 5 ---
+1.2. ĐỐI TƯỢNG VÀ PHẠM VI NGHIÊN CỨU
+a, Đối tượng nghiên cứu:
+Đối tượng chính: Mô hình toán học và quy trình tích
+hợp giữa GIS và AI trong công tác đánh giá quỹ đất
+xây dựng.
+Đối tượng phụ (Thành phần cấu thành):
+Dữ liệu đầu vào: Tự nhiên (địa hình, địa chất, khí hậu,
+thủy văn); hiện trạng sử dụng đất, xây dựng và hạ
+tầng kỹ thuật.
+Công nghệ liên quan: Các thuật toán học máy
+(Machine Learning).
+Phương pháp đối chứng: Cơ chế và hạn chế của
+phương pháp cho điểm truyền thống.
+Sản phẩm đầu ra: Thuyết minh thông số và bản đồ
+phân vùng 4 cấp độ: Thuận lợi - Ít thuận lợi - Không
+thuận lợi.
+b, Phạm vi
+
+--- PAGE 6 ---
+1.3. PHƯƠNG PHÁP VÀ MỤC TIÊU NGHIÊN CỨU
+Mục tiêu tổng quát: Thiết lập và thực chứng
+Phương pháp nghiên cứu tài liệu
+(validate) mô hình tích hợp GIS-AI kết hợp
+khung tiêu chí định lượng nhằm tự động hóa
+quy trình phân tích tiềm năng quỹ đất xây
+Phương pháp phân tích và tổng hợp
+dựng trong đồ án quy hoạch chi tiết 1/500 tại
+Việt Nam; giảm định kiến chủ quan (subjective
+Phương pháp phân tích hệ thống
+bias) và tăng hiệu suất.
+Mục tiêu cụ thể:
+Phương Hệ thống hóa cơ sở lý luận về GIS, AI và các
+Phương pháp phân tích hệ thống
+phương pháp đánh giá đất đai.
+pháp
+Đánh giá thực trạng quy hoạch 1/500 tại
+
+--- PAGE 7 ---
+1.4. CƠ SỞ PHÁP LÝ VỀ QUY HOẠCH VÀ SỬ DỤNG ĐẤT.
+1.4.1. VĂN BẢN QUY PHẠM PHÁP LUẬT
+Văn bản quy phạm pháp luật cốt lõi Quy chuẩn, tiêu chuẩn kỹ thuật
+Nghị định 37/2010/NĐ-CP và Thông tư 04/2022/TT-
+Luật Đất đai số 31/2024/QH15
+BXD
+Luật Quy hoạch đô thị và nông thôn 2024 Nghị định số 35/2023/NĐ-CP
+TCVN 4449:1987: Tiêu chuẩn về thiết kế quy hoạch xây
+Luật Quy hoạch số 21/2017/QH14
+dựng đô thị
+Luật Xây dựng số 50/2014/QH13 và các văn bản sửa
+QCVN 01:2021/BXD (quy hoạch xây dựng)
+đổi bổ sung liên quan
+QCVN 74:2023/BTNMT (bản đồ địa hình), TCVN
+4449:1987 (thiết kế quy hoạch đô thị)
+Ý nghĩa pháp lý vớ
+
+--- PAGE 8 ---
+1.4.2. CƠ SỞ LÝ THUYẾT
+4 nhóm yếu tố địa chất tự nhiên làm nền
+Địa hình Khí hậu Thủy văn Địa chất và thổ nhưỡng
+Phân loại đất thành 3
+Các yếu tố nhiệt độ, độ Đánh giá sức chịu tải nền
+nhóm (thuận lợi - ít lợi - Xác định vùng nguy
+ẩm, lượng mưa ảnh đất, nguy cơ bão, khả năng
+không có lợi); chức cơ, bố trí tầng cấp-
+hưởng trực tiếp đến thoát nước; thiết lập bản đồ
+năng phân định thoát nước, giao thông
+chất lượng không gian phân vùng rủi ro cho địa chỉ
+hướng; tính toán khối thủy, bảo vệ sinh thái
+sống và định hướng để xác định cấm khu vực
+lượng bồi đắp; bố trí ven nước.
+phát triển bền vững. hoặc 
+
+--- PAGE 9 ---
+1.4.3. CƠ SỞ KINH TẾ - XÃ HỘI
+NGHIÊN CỨU DỰA TRÊN ĐỊA LÝ KINH TẾ - PHÂN TÍCH SỰ PHÂN BỐ VÀ TỔ CHỨC CÁC HOẠT
+ĐỘNG KINH TẾ-XÃ HỘI Ở KHÔNG GIAN LÃNH THỔ:
+Điều kiện tự nhiên
+Vị trí địa lý, địa hình, tài nguyên tạo nên sự khác biệt khu vực,
+ảnh hưởng trực tiếp đến thu hút đầu tư và chi phí phát triển.
+Ý nghĩa với mục tiêu:
+Địa lý kinh tế cung cấp thảo
+luận về khoa học để tổ chức
+3 nhóm
+Khoa học - công nghệ các sản phẩm sản xuất
+yếu tố
+Công nghệ số, AI và tự động hóa thực hiện dịch chuyển cơ khổng lồ, dân cư và hạ tầng
+tác động
+cấu lao động và thay đổi bản đồ phân bố kinh tế không gian. bền vững
+chí
+
+--- PAGE 10 ---
+1.4.4. CƠ SỞ KHOA HỌC CỦA HỆ THỐNG THÔNG TIN ĐỊA LÝ (GIS)
+3 loại dữ liệu:
+1.Không gian: Biểu diễn hình học (điểm, đường, vùng) –
+"bộ khung" số hóa địa chỉ
+2.Thuộc tính: Lưu trữ chỉ số kỹ thuật (loại đất, mật xây
+dựng, giá trị kinh tế-xã hội)
+3.Thời gian: Theo dõi biến động sử dụng đất, ngập nước,
+sưu tập các thời kỳ
+Kết luận: GIS giúp
+2 mô hình dữ liệu: Hình 7. Minh họa mô hình Hệ thống thông tin địa lý (GIS)
+đánh giá đất mang
+1.Vector: Biểu diễn chính xác ranh giới, hạ tầng, hiện
+tính khách quan, định
+trạng sử dụng đất
+lượng và có cơ sở khoa
+2.Raster: Mô phỏng bề mặt liên tục (cao độ DEM, ảnh
+
+--- PAGE 11 ---
+1.4.5. CƠ SỞ KHOA HỌC CỦA TRÍ TUỆ NHÂN TẠO TRONG ĐÁNH GIÁ ĐẤT ĐAI
+
+--- PAGE 12 ---
+1.4.6. CƠ SỞ TÍCH HỢP GIS VÀ AI TRONG ĐÁNH GIÁ QUỸ ĐẤT XÂY DỰNG
+
+--- PAGE 13 ---
+1.4.7. . ĐỊNH HƯỚNG XÂY DỰNG MÔ HÌNH ĐÁNH GIÁ QUỸ ĐẤT XÂY DỰNG THEO LOGIC INPUT - PROCESS - OUTPUT.
+Sơ đồ logic mô hình đánh giá quỹ đất xây dựng theo hướng tích hợp
+GIS – AI
+
+--- PAGE 14 ---
+1.5. GIẢI THÍCH THUẬT NGỮ
+Thuật ngữ Giải thích Thuật ngữ Giải thích
+Vector Dữ liệu dạng điểm, đường, vùng
+Quy hoạch Quá trình tổ chức, sắp xếp không gian sử dụng đất
+DEM Mô hình số độ cao địa hình
+Quy hoạch chi tiết Cấp quy hoạch cụ thể xác định chức năng từng lô đất
+Buffer Vùng đệm xung quanh đối tượng
+Mật độ xây dựng Tỷ lệ diện tích xây dựng trên diện tích đất (%)
+Overlay Chồng lớp dữ liệu để phân tích
+Reclassify Phân loại lại dữ liệu theo thang điểm
+FAR Hệ số sử dụng đất (tổng diện tích sàn/diện tích đất)
+Network Analysis Phân tích mạng lưới giao thông
+GPMB Quá trình thu hồi và đền bù đất đ
+
+--- PAGE 15 ---
+PHẦN 2: XỬ LÝ DỮ LIỆU
+KHÔNG GIAN
+(GIS MASTER)
+
+--- PAGE 16 ---
+2.1. QUY TRÌNH SỐ HÓA & CHUẨN HÓA DỮ LIỆU ĐA TIÊU CHÍ (GIS)
+Xây dựng đường Quy trình gồm 4 bước
+ống dữ liệu có
+tính tái lập cao,
+thay thế phương
+pháp dựa trên hệ
+thống truyền tải
+Lựa Phân Gán
+Kỹ
+MCA dựa trên
+chọn tích nhãn
+thuật
+bảng điểm chủ
+vùng đặc Ground
+tính
+mẫu điểm Truth
+năng
+
+--- PAGE 17 ---
+2.2. LỰA CHỌN VÙNG MẪU ĐẠI DIỆN
+4 MẪU HUẤN LUYỆN AI KHU VỰC
+Nguyên tắc lựa chọn
+Đặc điểm
+Địa lý đại Mức đô
+Khu vực mẫu Địa hình dữ liệu
+diện thị hóa
+GIS
+Đồng Phức tạp,
+Hiệp Bình - Đô thị lớn
+bằng thấp, Rất cao mật độ
+TP.HCM phía Nam
+ven sông cao
+Đa dạng địa hình
+Đồi núi
+Đô thị Hạn chế,
+Phùng Chí Kiên - trung du,
+miền núi Trung bình địa hình
+Bắc Kạn độ dốc
+phía Bắc chia cắt
+vừa
+Thẩm định hóa
+Núi cao,
+Biên giới, Thưa thớt,
+Thất Khê - Lạng thung
+địa hình Thấp thiếu hạ
+Sơn lũng, hồ
+phức tạp tầng số
+lớn
+Chất lượng dữ liệu GIS
+Đồi thấp,
+Đô thị Đa dạng,
+Minh Tân - Yên chênh Đang phát
+trung du nhiều l
+
+--- PAGE 18 ---
+2.3. ĐẶC ĐIỂM KHU VỰC MẪU
+KHU VỰC: PHƯỜNG MINH TÂN, TP. YÊN BÁI (10,9 HA)
+Hình 1. Sơ đồ ranh giới khu vực phường Minh Tân, Hình 2. Bản đồ hiện trạng sử dụng đất khu vực Hình 3. Bản đồ quy hoạch sử dụng đất khu vực
+TP. Yên Bái (11ha) phường Minh Tân, TP. Yên Bái phường Minh Tân, TP. Yên Bái
+1.Cao độ biến thiên lớn: +34,5m đến
+Lý do lựa chọn: Địa hình
++80m
+hình, đang điều chỉnh
+2.Sản phẩm sản xuất rừng sử dụng
+chiến lược, có đầy đủ địa
+83,6% diện tích
+chỉ dữ liệu để kiểm tra
+3.Giao thông: Đường Điện Biên (23m) +
+Đường Kim Đồng (13,5m)
+
+--- PAGE 19 ---
+2.4. FEATURE ENGINEERING (SỐ HÓA & CHUẨN HÓA)
+9 TIÊU CHÍ ĐẦU VÀO (X1–X9)
+Mã Tiêu chí Mô tả nội dung đánh giá Phương pháp GIS
+Phân loại theo địa hình: đồng
+X1 Cao độ nền DEM, Reclassify
+bằng, trung du, miền núi
+Tần suất ngập, độ sâu ngập
+X2 Nguy cơ ngập lụt Overlay thủy văn, buffer
+trung bình năm (%)
+Khoảng cách đến sông, hồ,
+X3 Khoảng cách mặt nước Buffer analysis Toàn bộ bộ chuẩn hóa
+kênh rạch (m)
+dữ liệu về thang điểm
+Loại đất theo bảng phân loại Vector overlay, attribute
+X4 Hiện trạng sử dụng đất
+pháp lý (GPMB) query
+1–10
+Tỷ lệ diện tích có công trình
+Lưới ô vuông 20×20m
+X5 Mật độ xây dựng 
+
+--- PAGE 20 ---
+X1 - Cao độ nền (DEM):
+Bảng 5. Tiêu chí 1 cao độ nền địa hình
+Điểm số Địa hình đồng bằng (0 - 20m) Địa hình trung du (20 - 200m) Địa hình miền núi (> 200m) Đánh giá mức độ thuận lợi
+Rất không thuận lợi (Vùng
+1 < 1m 180 - 200m > 1600m
+trũng thấp)
+2 1 - 2m 150 - 180m 1400 - 1600m Không thuận lợi
+3 2 - 3m 120 - 150m 1200 - 1400m Kém thuận lợi
+4 3 - 5m 100 - 120m 1000 - 1200m Trung bình thấp
+5 5 - 7m 80 - 100m 800 - 1000m Trung bình
+6 7 - 10m 60 - 80m 600 - 800m Trung bình khá
+7 10 - 12m 50 - 60m 500 - 600m Khá thuận lợi
+8 12 - 15m 40 - 50m 400 - 500m Thuận lợi (Cốt nền trung bình)
+9 15 - 18m 30 -
+
+--- PAGE 21 ---
+X2 - Nguy cơ ngập lụt:
+Bảng 6. Tiêu chí 2 nguy cơ ngập lụt
+Điểm số Tỷ lệ diện tích có nguy cơ ngập (%) Mức độ ảnh hưởng và thích nghi
+Rất cao: Các "rốn ngập" kinh niên, cần bảo vệ nghiêm
+1 > 10%
+ngặt.
+2 7 - 10% Cao: Ngập cục bộ khi mưa cực lớn (>0.3m).
+3 5 - 7% Khá cao: Ảnh hưởng lớn đến hạ tầng kỹ thuật.
+Trung bình: Cần cốt nền trung bình để ứng phó (4.0m -
+4 3 - 5%
+5.0m).
+5 2 - 3% Trung bình thấp: Nguy cơ thấp, dễ dàng xử lý kỹ thuật.
+6 1.5 - 2% Thấp: Ít ảnh hưởng đến hoạt động xây dựng.
+7 1 - 1.5% Rất thấp: Điều kiện thủy văn ổn định.
+8 0.5 - 1% Không đáng kể: An toàn cho các công trình hạ 
+
+--- PAGE 22 ---
+X3 - Khoảng cách tới mặt nước:
+Bảng 7. Tiêu chí 3 khoảng cách tới mặt nước
+Điểm số Khoảng cách (m) Mức độ thuận lợi và khai thác cảnh quan
+Không thuận lợi: Vi phạm hành lang bảo vệ, nguy
+1 < 20m
+cơ sạt lở.
+Kém thuận lợi: Cách xa mặt nước hoặc nằm trong
+2 20 - 50m
+vùng đệm nhạy cảm.
+Trung bình thấp: Bắt đầu có khả năng tiếp cận
+3 50 - 100m
+cảnh quan.
+4 100 - 200m Trung bình: Khoảng cách an toàn cơ bản.
+5 200 - 300m Trung bình khá: Phù hợp cho các khu vực dân cư.
+Khá thuận lợi: Đảm bảo vệ sinh môi trường và
+6 300 - 500m
+khoảng cách đi bộ.
+Thuận lợi: Phù hợp phát triển các khu chức năng
+7 500 - 7
+
+--- PAGE 23 ---
+X4 - Hiện trạng sử dụng đất:
+Bảng 8. Tiêu chí 4 hiện trạng sử dụng đất
+Điểm
+Nhóm đất Ký hiệu Tên loại đất Lý do chuyên môn
+số
+SON, MNC Sông, mặt nước Không thể xây dựng (trừ trường hợp đặc biệt).
+Cấm/Tránh (Không
+thể)
+Yếu tố văn hóa - tâm linh, không phù hợp phát
+NTD, TTN Đất nghĩa trang, tín ngưỡng
+triển xây dựng.
+1
+ONT, ODT Đất ở nông thôn, đô thị GPMB phức tạp, chi phí cao, ảnh hưởng dân cư.
+Không thuận lợi (Khó)
+DGT, DTL, DNL Đất giao thông, thủy lợi, năng lượng Hạ tầng thiết yếu, khó chuyển đổi.
+Công trình công cộng khó di dời, ảnh hưởng lớn
+Không thuận lợi (Khó) TSC, DGD, DYT Đất trụ sở,
+
+--- PAGE 24 ---
+X5 - Mật độ xây dựng hiện trạng:
+Bảng 9. Tiêu chí 5 mật độ xây dựng hiện trạng
+Tỷ lệ mật độ xây dựng
+Điểm số Khả năng khai thác quỹ đất xây dựng mới
+(%)
+1 > 90% Rất không thuận lợi: Đã lấp đầy, không còn không gian phát triển.
+2 80% - 90% Không thuận lợi: Dân cư hiện hữu quá dày đặc.
+3 60% - 80% Kém thuận lợi: Chỉ có thể cải tạo chỉnh trang nhỏ lẻ.
+4 50% - 60% Trung bình thấp: Cần giải pháp tái định cư tại chỗ lớn.
+5 40% - 50% Trung bình: Phù hợp định hướng phát triển hỗn hợp.
+6 30% - 40% Trung bình khá: Quỹ đất còn khá dồi dào cho hạ tầng xã hội.
+7 20% - 30% Khá thuận lợi: Thuận tiện bố trí c
+
+--- PAGE 25 ---
+X6 - Sự phù hợp quy hoạch:
+Bảng 10. Tiêu chí 6 sự phù hợp quy hoạch
+Điểm số Nội dung đánh giá chi tiết theo quy hoạch Mức độ tương thích pháp lý
+1 Sai mục đích, nằm trong khu vực cấm hoặc vùng bảo vệ nghiêm ngặt. Rất không thuận lợi (Loại trừ)
+2 Không phù hợp về chức năng và kết nối hạ tầng khung. Không thuận lợi
+3 Phù hợp một phần, nhưng vướng mắc về cốt cao độ hoặc hành lang an toàn. Kém thuận lợi
+4 Phù hợp nhưng thiếu sự đồng bộ với các dự án hạ tầng kỹ thuật lân cận. Trung bình thấp
+5 Tương đối phù hợp với định hướng chung của phân khu. Trung bình
+6 Phù hợp và nằm trong danh mục ưu tiên đầ
+
+--- PAGE 26 ---
+X7 - Chi phí giải phóng mặt bằng (GPMB):
+Bảng 11. Tiêu chí 7 chi phí giải phóng mặt bằng (GPMB)
+Điểm số Đặc điểm hiện trạng và chi phí ước tính Khả năng thực thi kinh tế
+Khu dân cư đông đúc, nhà kiên cố, di tích lịch sử cần bảo tồn. Rất cao (Không khả thi kinh tế)
+1 Đất ở lâu đời, mật độ cao, chi phí đền bù và tái định cư rất lớn. Cao
+Nhà xưởng, cơ sở sản xuất đang hoạt động, cần hỗ trợ ngừng việc. Khá cao
+Đất dân cư nông thôn, nhà ở tầng thấp, dễ thỏa thuận hơn. Trung bình
+Đất nông nghiệp xen kẹt trong khu dân cư, thủ tục pháp lý phức tạp. Trung bình thấp
+2
+Đất nông nghiệp thuần túy, quy mô l
+
+--- PAGE 27 ---
+X8 - Tiếp cận giao thông:
+Bảng 12. Tiêu chí 8 tiếp cận giao thông
+Điểm số Khoảng cách tiếp cận đường chính (m) Đánh giá khả năng kết nối nội - ngoại vùng
+1 > 2000m Rất kém: Bị cô lập, giao thông khó khăn.
+2 1500 - 2000m Kém: Phải qua nhiều tuyến đường nhánh nhỏ.
+3 1200 - 1500m Trung bình thấp: Cách xa các trục giao thông đối ngoại.
+4 1000 - 1200m Trung bình: Khoảng cách chấp nhận được cho đô thị.
+5 800 - 1000m Trung bình khá: Bắt đầu thuận tiện cho việc di chuyển.
+6 600 - 800m Khá thuận lợi: Tiếp cận nhanh với các tuyến buýt, tàu điện.
+7 400 - 600m Thuận lợi: Khoảng cách đi bộ lý tưởng đến các
+
+--- PAGE 28 ---
+X9 - Mật độ mạng lưới đường:
+Bảng 13. Tiêu chí 9 mật độ mạng lưới đường
+Điểm số Mật độ đường (km/km²) Đánh giá khả năng lưu thông và thoát người
+1 < 1.0 Rất kém: Khu vực chưa có đường, chủ yếu là đường mòn.
+2 1.0 - 2.5 Kém: Hệ thống đường cụt, ngõ nhỏ thưa thớt.
+3 2.5 - 4.0 Trung bình thấp: Mạng lưới giao thông chưa hoàn thiện.
+4 4.0 - 5.5 Trung bình: Đảm bảo nhu cầu giao thông cơ bản.
+5 5.5 - 7.0 Trung bình khá: Có hệ thống đường phân khu rõ ràng.
+6 7.0 - 8.5 Khá thuận lợi: Khả năng kết nối giữa các ô đất tốt.
+7 8.5 - 10.0 Thuận lợi: Giao thông thông suốt, mật độ đường cao.
+8 10.0 - 11.5 Rất 
+
+--- PAGE 29 ---
+2.5. CÔNG TÁC GÁN NHÃN CHUYÊN GIA (LABELING) VÀ THIẾT LẬP GROUND TRUTH
+HỆ THỐNG PHÂN LOẠI 3 NHÃN (Y)
+1.Y = 0 – Không có lợi: loại trừ hoàn
+toàn (ngập lụt, phá hủy, hành
+lang bảo vệ)
+2.Y = 1 – Ít thuận lợi: cần giải pháp
+kỹ thuật bổ sung (san nền, gia
+cố)
+3.Y = 2 – Thuận lợi: đáp ứng đủ điều
+kiện kỹ thuật, pháp lý, kinh tế
+4.Quy trình chỉ định nhãn 3 bước:
+→ →
+Chuyên gia Kiểm tra chéo
+Xác thực địa chỉ
+Kết quả: 1.097 lưới ô đã được chỉ định
+xác thực nhãn
+Hình 4. Bản đồ lưới ô vuông 20×20m chồng lên khu vực nghiên cứu Yên Bái
+
+--- PAGE 30 ---
+2.6. ĐẶC ĐIỂM KHU VỰC THỰC NGHIỆM – PILOT SITE: MINH TÂN, YÊN BÁI
+TẠI SAO CHỌN MINH TÂN ĐỂ KIỂM TRA?
+Kiểm tra bằng chứng
+Tính đại diện Tính thách thức
+Đã có sơ đồ QHC TP. Yên
+Đại diện cho hàng chục Độ lệch cao 45m, rừng sử
+Bái đến 2030 được phê
+đô thị trung du miền núi dụng 83,6%, hành động
+duyệt, đội ngũ chuyên gia
+phía Bắc bảo vệ an toàn
+có kinh nghiệm thực địa
+
+--- PAGE 32 ---
+NỘI DUNG CHI TIẾT
+0 1 0 2 0 3
+KẾT QUẢ HUẤN LUYỆN VÀ KẾT QUẢ CHƯƠNG TRÌNH
+LỰA CHỌN THUẬT TOÁN VÀ
+TRÍCH XUẤT ĐỘ QUAN
+TIỀN XỬ LÝ DỮ LIỆU
+TRỌNG CÁC ĐẶC TRƯNG
+
+--- PAGE 33 ---
+L Ý D O L ỰA C HỌ N T HUẬ T T O Á N
+Decision Tree Random Forest
+Khắc phục hiện tượng dễ bị
+overfitting ở Cây quyết định
+Khả năng phân tích tầm
+quan trọng của các đặc
+trưng
+
+--- PAGE 34 ---
+T I ỀN X Ử L Ý D Ữ L I ỆU
+Test
+20%
+01 0022 03 04
+Tải dữ liệu từ file Loại bỏ các cột định
+Train
+Mô hình Random Forest
+TrainingDataset.csv danh không dùng để học
+80%
+ban đầu được khởi tạo với
+(như ID, TenLoDat) và
+Dữ liệu được chia theo tỷ cấu hình n_estimators=9
+nhãn Y cũ, chỉ giữ lại các
+lệ 80:20:
+biến số từ x1 đến x9 để
+1277 mẫu dùng để
+đưa vào huấn luyện
+huấn luyện (Train)
+320 mẫu dùng để kiểm
+tra (Test)
+
+--- PAGE 35 ---
+F1-score
+KẾT QUẢ
+HUẤN LUYỆN
+0.94
+& ĐÁNH GIÁ
+Độ chính xác tổng
+0.92
+thể (Accuracy):
+93.12%.
+0.92
+0 2
+
+--- PAGE 36 ---
+Kiểm tra overfitting theo 2 chỉ số chính
+
+--- PAGE 37 ---
+0 2
+Thông qua thuộc tính
+feature_importances_ của mô
+hình, AI đã tính toán được trọng
+số ảnh hưởng của từng biến số.
+Các đặc trưng này được dùng
+để cho các nhà quy hoạch có
+thể xem xét và hiệu chỉnh lại
+tập huấn luyện cũng như thông
+tin dùng để dự đoán sau này.
+TRÍCH XUẤT
+ĐẶC TRƯNG QUAN TRỌNG
+
+--- PAGE 38 ---
+QUÁ TRÌNH XỬ LÝ HỆ THỐNG
+File Filedudoan.ccsv chứa dữ liệu đã qua xử
+lý nhưng chưa có nhãn, đưa vào mô hình
+Random Forest đã được huấn luyện và cho ra
+kết quả là file Ketqua.csv chứa cột nhãn mà
+AI dự đoán
+
+--- PAGE 39 ---
+KẾT QUẢ
+Đưa file Ket qua.csv vào QGIS
+kết hợp cùng với bản đồ khu vực
+Yên Bái để cho ra hình ảnh dự
+đoán trực quan cuối cùng.
+
+--- PAGE 40 ---
+PHẦN 4: KIỂM CHỨNG KHẢ
+NĂNG HỖ TRỢ RA QUYẾT
+ĐỊNH QUY HOẠCH CỦA MÔ
+HÌNH AI
+
+--- PAGE 41 ---
+ĐỐI CHIẾU KẾT QUẢ RANDOM FOREST VỚI NHÃN GROUND TRUTH CHUYÊN GIA TẠI TÂN MINH, YÊN BÁI
+Kết quả kỹ thuật thu được khá khả quan: mô hình đạt độ chính xác tổng thể 84,55% trong đánh giá ban
+đầu và F1-Score ≈ 0,79 sau tối ưu hóa bằng GridSearchCV.
+Tuy nhiên, chỉ riêng con số độ chính xác kỹ thuật chưa đủ để trả lời một câu hỏi có tính chất quyết định
+hơn: Kết quả phân loại của mô hình AI có phù hợp với nhận định và logic ra quyết định của nhà quy hoạch
+đô thị trong bối cảnh thực tiễn hay không?
+MỤC TIÊU ĐÁNH GIÁ
+1 ĐO LƯỜNG TƯƠNG ĐỒNG 2 PHÂN TÍCH SAI LỆCH 3 ĐỀ XUẤT MÔ HÌNH HITL
+Nhận diện và phân tí
+
+--- PAGE 42 ---
+DỮ LIỆU ĐỐI CHIẾU GROUND TRUTH - NHÃN CHUYÊN GIA TẠI TÂN MINH, YÊN BÁI
+Phân phối 355 ô lưới (20×20m) Data Augmentation — 500 mẫu vùng núi
+Tham chiếu: KDC phường Quyết Thắng, TP. Sơn La (~14 ha)
+Y=0
+3,7% Y=1 ́ ̃
+8,7% Nhãn Ý nghĩa Sô mâu
+́ ̃
+Nhãn Ý nghĩa Sô mâu
+Y=0 Không thuận lợi 150 X2 ≤ 5 (ngập), X3 ≤ 3 (vi phạm hành lang)
+Y=0 Không thuận lợi 13
+Y=1 Ít thuận lợi 150 X1 rất cao (độ dốc lớn), X2 trung bình
+Y=1 Ít thuận lợi 31
+Y=2 Thuận lợi 311 Y=2 Thuận lợi 200 X1 trung bình, X2 cao, X3 ≥ 4
+Y=2
+87,6%
+Việc gán nhãn được thực hiện dựa trên tổng hợp: (i) khảo sát thực địa khu vực Tân Phương pháp m
+
+--- PAGE 43 ---
+PHƯƠNG PHÁP ĐỐI CHIẾU: PHÂN TÍCH 3 TẦNG TƯƠNG HỖ
+1 Tầng 1 — Confusion Matrix
+So sánh trực tiếp nhãn dự đoán của mô hình (Ŷ) với nhãn Ground Truth (Y) trên tập kiểm tra 355 mẫu. Confusion Matrix cung cấp bức tranh
+toàn cảnh về mức độ nhất quán và các kiểu sai lệch có hệ thống
+2 Tầng 2 — Feature Importance trước / sau hiệu chỉnh
+Đối chiếu biểu đồ trọng số X1–X9 giữa mô hình ban đầu và mô hình sau Data-centric AI, từ đó nhận diện xem AI đang ưu tiên những tiêu chí
+nào và điều đó có phù hợp với tư duy quy hoạch bền vững không
+2 Tầng 3 — Phân tích trường hợp điển hình
+Đi sâu vào các ô lưới/lô đất c
+
+--- PAGE 44 ---
+MÔ HÌNH BAN ĐẦU & VẤN ĐỀ: PHÁT HIỆN "THỊ TRƯỜNG HÓA" DỮ LIỆU
+Y=0 => F1-Score = 0.74 - THẤP NHẤT
+Điều đáng lo ngại về mặt quy hoạch: đây chính là nhóm
+quan trọng nhất về an toàn xây dựng nhưng AI lại xử lý
+kém nhất do số lượng mẫu ít (36 mẫu) và dữ liệu huấn
+luyện chưa đủ phong phú về các kịch bản rủi ro địa hình
+đặc thù miền núi Yên Bái.
+Y=1 =>F1-Score = 0,88 - CAO NHẤT
+Điều này cho thấy AI nhận diện tốt nhất nhóm đất ở
+mức trung gian – nơi có dữ liệu phong phú nhất
+trong tập huấn luyện (110 mẫu)
+Y=2 => F1-Score = 0,80
+AI nhận diện khá tốt các lô đất tiềm năng;
+AI học quy luật kinh tế trong dữ
+
+--- PAGE 45 ---
+XUNG ĐỘT YB4 & YB6: KHI AI "NHÌN THẤY" DỮ LIỆU NHƯNG BỎ SÓT THỰC ĐỊA
+CHUYÊN GIA
+AI PHÂN LOẠI
+́ ́
+Lô đât YB4 Lô đât YB6
+AI phân loại Y=2 Thuận lợi
+AI phân loại Y=2 Thuận lợi
+Chuyên gia Y=0 Không TL
+Chuyên gia Y=0 Không TL
+Lý do AI X4, X7 đạt gần tối đa
+Lý do AI X4, X7 đạt gần tối đa
+X2 < 5 điểm — nguy cơ ngập theo lịch
+Lý do chuyên gia
+X2 < 5 điểm — nguy cơ
+Lý do chuyên gia
+sử thủy văn địa phương
+ngập cao
+́ ̀
+Thông tin thực địa chưa được sô hóa đây đủ — chỉ chuyên gia
+́ ́ ̃
+Nơi có độ dôc cao, đât trũng tính dê gây ngập lụt
+́
+biêt qua kinh nghiệm khảo sát
+💡
+Kết luận trung gian: AI không sai về m
+
+--- PAGE 46 ---
+SAU DATA-CENTRIC AI: MÔ HÌNH HỌC ĐƯỢC TƯ DUY QUY HOẠCH BỀN VỮNG
+Trọng số sau hiệu
+Biến số (Tiêu chí) Trọng số ban đầu Nhận xét quy hoạch
+chỉnh
+X4 – Hiện trạng sử dụng Giảm mạnh – không còn áp
+Cao nhất (~25%) Trung bình (~8,7%)
+đất đảo tiêu chí an toàn
+Điều chỉnh về mức hỗ trợ –
+X7 – Chi phí GPMB Cao (~20%) Trung bình (~10,6%) không lấn át điều kiện tự
+nhiên
+Trở thành ràng buộc cứng
+X2 – Nguy cơ ngập lụt Thấp (~7%) Cao nhất (~32,4%) ▲ số 1 – phù hợp quy hoạch
+vùng núi
+X1 – Cao độ nền địa Tiêu chí địa hình được nhận
+Thấp (~8%) Cao (~17,3%) ▲
+hình diện đúng tầm quan trọng
+Hành lang bảo vệ được
+X3
+
+--- PAGE 47 ---
+PHÂN TÍCH TƯƠNG ĐỒNG VÀ SAI LỆCH — 3 LOẠI LỖI CÓ HỆ THỐNG
+3 loại sai lệch hệ thống
+Confusion Matrix — Bảng 16 (rút gọn)
+💡
+Sai lệch có tính hệ thống và có thể dự đoán — nền tảng để thiết kế quy trình
+ứng dụng AI có kiểm soát
+
+--- PAGE 48 ---
+AI KHÔNG THAY THẾ MCA — AI BỔ SUNG ĐIỂM YẾU CỐ HỮU CỦA PHƯƠNG PHÁP THỦ CÔNG
+🎯
+MCA định hướng chiến lược — AI tinh chỉnh không gian. Hai phương pháp song hành, không thay thế nhau.
+MÔ HÌNH HITL — KHUNG PHỐI HỢP 3 BƯỚC ĐỀ XUẤT CHO ĐỒ ÁN CHI TIẾT 1/500
+⚖
+Nguyên tắc cốt lõi: Quyết định cuối cùng LUÔN thuộc về chuyên gia có thẩm quyền pháp lý.
+AI không thể thay thế chức trách và trách nhiệm xã hội của Kiến trúc sư Quy hoạch đô thị.
+
+--- PAGE 49 ---
+MÔ HÌNH HITL — KHUNG PHỐI HỢP 3 BƯỚC ĐỀ XUẤT CHO ĐỒ ÁN CHI TIẾT 1/500
+
+--- PAGE 50 ---
+KẾT LUẬN PHẦN 4 BỔ SUNG
+4 ĐIỀU KIỆN TIÊN QUYẾT ĐỂ ỨNG DỤNG AI CÓ KIỂM SOÁT TRONG QUY HOẠCH VIỆT NAM
+KHUYẾN NGHỊ THỰC TIỄN — TRÁNH RỦI RO PHÁP LÝ TRONG MÔI TRƯỜNG QUY HOẠCH VIỆT NAM
+
+--- PAGE 51 ---
+PHẦN 5: ĐỀ XUẤT ỨNG DỤ NG
+KẾT QUẢ NGHIÊN CỨU VÀO
+THỰC TIỄN QUY HOẠCH
+
+--- PAGE 52 ---
+HỆ THỐNG PHÂN VÙNG ĐẤT XÂY DỤNG
+Y = 2 THUẬN LỢI Y = 1 ÍT THUẬN LỢI Y = 0 KHÔNG THUẬN LỢI
+CHỨC NĂNG PHÙ HỢP CHỨC NĂNG PHÙ HỢP CHỨC NĂNG PHÙ HỢP
+Đất ở hỗn hợp, thương Nhà ở thấp tầng, hạ tầng Không gian xanh, mặt
+mại – dịch vụ, công trình kỹ thuật, công viên cây nước điều tiết, hành lang
+công cộng mật độ cao xanh sinh thái
+CHỨC NĂNG HẠN CHẾ CHỨC NĂNG HẠN CHẾ CHỨC NĂNG HẠN CHẾ
+Không có Công trình quy mô lớn, Toàn bộ công trình xây
+công trình đặc biệt quan dựng kiên cố
+trọng
+YÊU CẦU KỸ THUẬT BỔ SUNG YÊU CẦU KỸ THUẬT BỔ SUNG YÊU CẦU KỸ THUẬT BỔ SUNG
+Không yêu cầu thêm Khảo sát địa chất, Bắt buộc kh
+
+--- PAGE 53 ---
+SO SÁNH: GIS-AI VÀ PHƯƠNG PHÁP CHUYỀN THỐNG
+̀ ́
+Tiêu chí Phương pháp chuyên thông Mô hình GIS-AI Cải thiện
+́ ̀
+Tôc độ xủ lý Vài tuân Vài giờ ↑ Rất cao
+Cập nhật dữ liệu Thủ công, định kỳ Tự động, theo thời gian thực ↑ Cao
+Tính khác quan Phụ thuộc chuyên gia Dựa trên dữ liệu ↑ Cao
+Tích hơp IOT Không có Có thể tích hợp ↑ Cao
+Chi phí chiển khai Thấp ban đầu Cao ban đầu, thấp về sau — Trung bình
+Khả năng kiểm chứng Khó Minh bạch, có thể kiểm tra ↑ Rất cao
+
+--- PAGE 54 ---
+ỨNG DỤNG TRONG QUY HOẠCH CHI TIẾT 1/500
+1 2
+3
+BƯỚC 1 BƯỚC 2
+BƯỚC 3
+Chuẩn hóa đầu ra Tích hợp da lớp
+Thẩm định chuyên gia
+Xuất bản đồ Y=0/1/2 ở tỷ lệ Xếp chồng với bản đồ hiện
+AI cung cấp bằng chứng hỗ
+1/500 trạng sử dụng đất
+trợ định lượng
+Hệ tọa độ VN-2000 Đối chiếu với bản đồ địa hình
+Hội đồng thẩm định kiểm tra 9
+Theo QCVN 01:2021/BXD Kết hợp nhiều lớp GIS trong
+🟢 🟠 🔴 tiêu chí X1–X9
+Màu: Xanh lá · Cam · đồ án
+Quyết định cuối cùng do
+Đỏ
+chuyên gia quy hoạch
+
+--- PAGE 55 ---
+ỨNG DỤNG TRONG QUY HOẠCH CHI TIẾT 1/500
+🌐 🖥
+Nền tảng GIS Đô thị Số Hệ thống SDSS — 3 Chức năng Cốt lõi
+Trực quan hóa
+✓
+Cập nhật thời gian thực khi có dữ liệu mới
+Xem định lượng 9 tiêu chí X1–X9 tại bất kỳ
+lô đất nào, lọc và xuất báo cáo tự động
+✓
+Tích hợp hình ảnh viễn thám phân giải cao
+Mô phỏng Kịch bản
+✓
+Kết nối cảm biến IoT giám sát ngập lụt
+→
+"If khu vực A bê tông hóa B bị ảnh
+hưởng thế nào?" — phân tích trước khi
+✓
+Lớp thông tin "sống" phản ánh trạng thái
+phê duyệt
+đất đai
+Cảnh báo & Giám sát
+✓
+Chia sẻ giữa cấp tỉnh và cấp huyện Tự động cảnh báo dự án xây dựng tại
+Y=0 hoặc khi IoT phát h
+
+--- PAGE 56 ---
+ỨNG DỤNG: BIẾN ĐỔI KHÍ HẬU & QUY HOẠCH THÍCH ỨNG
+BA TIÊU CHÍ NHẠY CẢM VỚI KHÍ HẬU ỨNG DỤNG QUY HOẠCH THÍCH ỨNG
+🌿
+Chuyển đổi sớm sang hạ tầng Xanh–Xanh
+Cao độ nền
+→
+X1 Vùng có nguy cơ Y=2 Y=0 trong kịch bản 2050
+Nhạy cảm với nước biển dâng & sụt lún
+ưu tiên thành hồ điều tiết, hành lang sinh thái
+ngay từ hiện tại
+→
+⟶ Y=2 Y=1/0 | Ưu tiên: Cao
+🛡
+Nguy cơ ngập lụt Thiết lập Vùng đệm Động
+Bản đồ xác định chính xác khu vực cần nâng cấp
+X2
+Tần suất mưa tăng 2–3 lần vào 2050 (RCP
+thoát nước, nền đường — phân bổ ngân sách có
+4.5/8.5)
+mục tiêu
+→
+⟶ Y=1 Y=0 | Ưu tiên: Rất cao
+💰
+Ưu tiên hóa Đầu tư Hạ tầng
+K
+
+--- PAGE 57 ---
+ỨNG DỤNG: BIẾN ĐỔI KHÍ HẬU & QUY HOẠCH THÍCH ỨNG
+HẠN CHẾ HIỆN TẠI LỘ TRÌNH NGHIÊN CỨU 2026-2030
+2026-2030
+RẤT CAO
+Giai đoạn 1: củng cố dữ liệu
+NNhhóómm YY==00 ccóó FF11 == 00,,7744 —— nngguuyy ccơơ bbỏỏ ssóótt vvùùnngg 1
+Mở rộng 10.000+ mẫu, 15–20 khu vực · Bổ sung
+nngguuyy hhiiểểmm
+mẫu Y=0 từ vùng có sự cố · Tích hợp lớp pháp
+lý dạng vector · Mục tiêu: F1(Y=0) ≥ 0,85
+CAO
+Dữ liệu 1.097 mẫu từ 4 khu vực — chưa
+2027-2028
+đại diện toàn quốc
+Giai đoạn 2: Nâng cấp AI
+2
+Tích hợp Deep Learning & CNN · Xử lý trực tiếp
+dữ liệu viễn thám · Kết nối IoT thời gian thực
+TRUNG BÌNH
+Chưa tích hợp ràng buộc ph
+
+--- PAGE 58 ---
+PHẦN 6: KẾT LUẬN &
+KIẾN NGHỊ
+
+--- PAGE 59 ---
+KẾT LUẬN
+01 02
+MÔ HÌNH GIS–AI HOẠT ĐỘNG HIỆU QUẢ DATA-CENTRIC AI LÀ YẾU TỐ QUYẾT ĐỊNH
+Accuracy 83,18% và F1-Score ≈ 0,79 — vượt Relabeling và Data Augmentation đã chuyển mô
+ngưỡng mục tiêu >80%, đủ độ tin cậy để ứng dụng hình từ ưu tiên kinh tế sang nhạy cảm với an toàn
+thực tiễn. địa hình — chất lượng dữ liệu quyết định chất
+lượng kết quả.
+03 04
+HUMAN-IN-THE-LOOP LÀ MÔ HÌNH PHÙ HỢP NHẤT KHUNG ỨNG DỤNG ĐA HƯỚNG
+→ → Quy hoạch 1/500 · Smart City · SDSS · Biến đổi khí
+AI sàng lọc diện rộng Chuyên gia kiểm duyệt
+hậu · NSDI quốc gia — tất cả đều có thể tích hợp
+Phản hồi cải thiện. AI không thay thế
+
+--- PAGE 60 ---
+KIẾN NGHỊ
+🏛 🏗 🔬
+Cơ quan Quản lý Nhà nước Đơn vị Tư vấn Quy hoạch Hướng Nghiên cứu Tiếp theo
+→ → →
+Ban hành quy định về tiêu Tích hợp công cụ GIS–AI Mở rộng tập dữ liệu lên
+chuẩn hóa dữ liệu GIS đầu vào giai đoạn Điều tra – Phân 10.000+ mẫu từ đa dạng địa
+vào (VN-2000, tích hiện trạng hình toàn quốc
+GeoJSON/Shapefile)
+→ → →
+Cho phép tích hợp bản đồ Thí điểm tại các đô thị Nghiên cứu tích hợp Deep
+phân vùng AI làm lớp cơ sở trung bình trước khi nhân Learning và dữ liệu viễn
+bắt buộc trong hồ sơ đồ án rộng thám
+1/500
+→ → →
+Xây dựng khung pháp lý Duy trì vai trò thẩm định Phát triển module phân
+ch
+
+--- PAGE 61 ---
+TRƯỜNG ĐẠI HỌC KIẾN TRÚC HÀ NỘI
+T H A N K Y O U
+CẢM ƠN THẦY, CÔ VÀ CÁC BẠN ĐÃ LẮNG NGHE!
+
