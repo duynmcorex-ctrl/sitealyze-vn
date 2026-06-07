@@ -524,6 +524,18 @@ export function overlayToWorldSpace(
   for (const { points } of polylines) {
     const dense = densify(points, maxGap);
     const seg: { x: number; y: number; z: number }[] = [];
+
+    // PRE-SCAN: tìm cao độ terrain đầu tiên có 'hit' trong polyline này.
+    // Dùng làm fallback cho các điểm ĐẦU nằm ngoài TIN (lastValidH vẫn null lúc đó).
+    // Tránh hiệu ứng "V-dive" — đường cắm từ terrainFloor vọt lên mặt terrain.
+    // Polyline hoàn toàn ngoài terrain → firstValidH = null → dùng terrainFloor (giữ behavior cũ).
+    let firstValidH: number | null = null;
+    for (const p of dense) {
+      const sr = sampleHeight(p.x, p.y, bounds, heightmap);
+      if (sr.kind === 'hit') { firstValidH = sr.h; break; }
+    }
+    const leadFallback = firstValidH ?? terrainFloor;
+
     let lastValidH: number | null = null;   // last height from real TIN coverage
 
     for (const p of dense) {
@@ -535,9 +547,10 @@ export function overlayToWorldSpace(
         h = sr.h;
       } else {
         // Outside TIN (dilation/fill zone) OR outside heightmap bbox entirely.
-        // Use the last known TIN edge height to continue the polyline flat,
-        // or fall back to terrain floor so the object is always visible.
-        h = lastValidH ?? terrainFloor;
+        // - Trailing outside (lastValidH set): keep last terrain edge height → flat extension
+        // - Leading outside (lastValidH null): use firstValidH so leading segment
+        //   stays at terrain-entry elevation, not terrainFloor → no spike
+        h = lastValidH ?? leadFallback;
       }
       seg.push({ x: p.x - cx, y: h + elevationOffset, z: -(p.y - cy) });
     }
