@@ -15,7 +15,8 @@ const COOKIE_NAME = 'siteauth';
 const COOKIE_VAL  = 'ok_haad_2024';
 
 export const config = {
-  matcher: ['/((?!_vercel|favicon.ico).*)'],
+  // Chỉ chặn root + page routes, không chặn assets/JS/CSS/WASM
+  matcher: ['/', '/index.html'],
 };
 
 const LOGIN_HTML = `<!DOCTYPE html>
@@ -76,13 +77,11 @@ const LOGIN_HTML_ERR = LOGIN_HTML.replace(
   'id="err" class="err show">',
 );
 
-export default async function middleware(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-
-  // Đọc cookie — nếu đã đăng nhập thì cho qua
+export default async function middleware(req: Request): Promise<Response | undefined> {
+  // Đọc cookie — nếu đã đăng nhập thì cho qua (undefined = pass through)
   const cookie = req.headers.get('cookie') ?? '';
   if (cookie.includes(`${COOKIE_NAME}=${COOKIE_VAL}`)) {
-    return new Response(null, { status: 200 }); // pass through
+    return undefined;
   }
 
   // Xử lý POST từ form đăng nhập
