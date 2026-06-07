@@ -30,12 +30,11 @@ export function Sidebar() {
   };
 
   return (
-    <aside
-      className="relative panel border-l overflow-y-auto shrink-0"
-      style={{ width }}
-    >
+    // Wrapper div bao ngoài để ResizeHandle KHÔNG bị clipped bởi overflow-y:auto của aside
+    <div className="relative shrink-0 flex" style={{ width }}>
       <ResizeHandle width={width} onChange={handleResize} />
 
+      <aside className="flex-1 panel border-l overflow-y-auto min-w-0">
       <div className="p-3 pt-3 pl-4">
         <CollapsiblePanel id="projects" number="0" title="Quản lý dự án" color="blue" defaultOpen>
           <ProjectManagementSection />
@@ -61,6 +60,7 @@ export function Sidebar() {
           <ReportSection />
         </CollapsiblePanel>
       </div>
-    </aside>
+      </aside>
+    </div>
   );
 }

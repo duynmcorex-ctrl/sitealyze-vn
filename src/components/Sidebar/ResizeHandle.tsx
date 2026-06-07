@@ -75,7 +75,7 @@ export function ResizeHandle({ width, onChange }: Props) {
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
       title="Kéo để thay đổi rộng sidebar — double-click để reset"
-      className={`group absolute left-0 top-0 bottom-0 w-1.5 z-50 cursor-ew-resize
+      className={`group absolute left-0 top-0 bottom-0 w-3 z-50 cursor-ew-resize
                   flex items-center justify-center
                   ${dragging ? 'bg-accent-teal/40' : 'hover:bg-accent-teal/20'} transition`}
     >
