@@ -9,7 +9,7 @@
  */
 
 const VALID_USER = 'HAAD';
-const VALID_PASS = 'Haadgroupvn';
+const VALID_PASS = 'haadgroupvn';
 const REALM      = 'SiteAlyze VN – HAAD Group';
 
 export const config = {
