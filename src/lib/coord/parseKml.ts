@@ -254,12 +254,12 @@ export function parseKmlPolygon(xml: string): { lat: number; lon: number }[] | n
     );
     if (named) return named.points;
 
-    // 2. Ưu tiên Polygon (bỏ qua candidate có tên rõ ràng là vùng loại trừ),
-    //    trong nhóm đó chọn diện tích lớn nhất — ranh giới dự án thường là hình lớn nhất
+    // 2. Chọn diện tích lớn nhất, KHÔNG phân biệt Polygon/LineString.
+    //    Lý do: nhiều file CAD-to-KML (CAD Earth, Civil3D…) xuất ranh giới thật dưới dạng
+    //    LineString (path), trong khi vài Polygon nhỏ chỉ là label/marker góc — nếu ưu tiên
+    //    "isPolygon" sẽ chọn nhầm object bé thay vì LineString lớn chứa ranh giới thật.
     const nonExcluded = candidates.filter((c) => !EXCLUDE_NAME_RE.test(c.name));
-    const pool0 = nonExcluded.length > 0 ? nonExcluded : candidates;
-    const polygons = pool0.filter((c) => c.isPolygon);
-    const pool = polygons.length > 0 ? polygons : pool0;
+    const pool = nonExcluded.length > 0 ? nonExcluded : candidates;
     pool.sort((a, b) => b.area - a.area);
     return pool[0].points;
   } catch (e) {
