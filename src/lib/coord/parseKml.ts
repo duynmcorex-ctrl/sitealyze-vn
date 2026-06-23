@@ -78,27 +78,79 @@ export function parseKmlText(xml: string): KmlLocation | null {
   return null;
 }
 
-/**
- * Đọc KMZ (ZIP) và cố trích KML XML.
- * Chiến lược:
- *   a) Tìm chuỗi XML bắt đầu từ "<?xml" hoặc "<kml" trong binary blob
- *      (nhiều KMZ lưu KML dưới dạng STORED = không nén).
- *   b) Nếu không tìm được, trả về null (yêu cầu user dùng KML).
- */
-export function extractKmlFromKmz(buffer: ArrayBuffer): string | null {
-  const bytes = new Uint8Array(buffer);
-  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+/** Inflate raw DEFLATE data bằng Web Streams API (DecompressionStream — Chrome/Edge 80+, Firefox 113+, Safari 16.4+) */
+async function inflateRawDeflate(data: Uint8Array): Promise<Uint8Array> {
+  const ds = new DecompressionStream('deflate-raw');
+  const input = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  });
+  // Cast: lib.dom.d.ts kiểu DecompressionStream.writable là WritableStream<BufferSource>,
+  // generic không khớp chặt với ReadableStream<Uint8Array> tuỳ phiên bản TS — runtime API chuẩn, an toàn.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buf = await new Response((input as any).pipeThrough(ds)).arrayBuffer();
+  return new Uint8Array(buf);
+}
 
-  // Tìm block XML KML
+const ZIP_LOCAL_FILE_HEADER_SIG = 0x04034b50;
+
+/**
+ * Đọc KMZ (ZIP) và trích KML XML bằng cách parse ZIP local file header trực tiếp
+ * (không cần thư viện ngoài — dùng DecompressionStream built-in cho deflate).
+ *
+ * Hỗ trợ cả 2 trường hợp:
+ *   - compression method 0 (STORED — không nén)
+ *   - compression method 8 (DEFLATE — phổ biến nhất, Google Earth Pro mặc định nén khi Save As)
+ *
+ * Giới hạn: không hỗ trợ ZIP dùng "data descriptor" (streaming, hiếm gặp ở KMZ tĩnh).
+ */
+export async function extractKmlFromKmz(buffer: ArrayBuffer): Promise<string | null> {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  while (offset + 30 <= bytes.length) {
+    const sig = view.getUint32(offset, true);
+    if (sig !== ZIP_LOCAL_FILE_HEADER_SIG) break; // hết entry tuần tự (gặp central directory)
+
+    const compMethod = view.getUint16(offset + 8, true);
+    const compSize   = view.getUint32(offset + 18, true);
+    const nameLen    = view.getUint16(offset + 26, true);
+    const extraLen   = view.getUint16(offset + 28, true);
+
+    const nameStart = offset + 30;
+    const name = new TextDecoder('utf-8').decode(bytes.slice(nameStart, nameStart + nameLen));
+    const dataStart = nameStart + nameLen + extraLen;
+    const dataEnd = dataStart + compSize;
+
+    if (/\.kml$/i.test(name)) {
+      const raw = bytes.slice(dataStart, Math.min(dataEnd, bytes.length));
+      try {
+        if (compMethod === 0) {
+          return new TextDecoder('utf-8', { fatal: false }).decode(raw);
+        }
+        if (compMethod === 8) {
+          const inflated = await inflateRawDeflate(raw);
+          return new TextDecoder('utf-8', { fatal: false }).decode(inflated);
+        }
+        console.warn(`[extractKmlFromKmz] Compression method ${compMethod} không hỗ trợ cho "${name}".`);
+      } catch (e) {
+        console.warn(`[extractKmlFromKmz] Giải nén "${name}" lỗi:`, e);
+      }
+      return null;
+    }
+
+    offset = dataEnd;
+  }
+
+  // Fallback cuối: thử tìm raw XML trong blob (trường hợp ZIP header bất thường)
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
   const xmlStart = text.search(/<\?xml|<kml[\s>]/i);
   if (xmlStart < 0) return null;
-
   const kmlEnd = text.lastIndexOf('</kml>');
-  if (kmlEnd < 0) {
-    // Có thể không có closing tag — trả về từ đầu đến hết
-    return text.slice(xmlStart);
-  }
-  return text.slice(xmlStart, kmlEnd + '</kml>'.length);
+  return kmlEnd < 0 ? text.slice(xmlStart) : text.slice(xmlStart, kmlEnd + '</kml>'.length);
 }
 
 /** Diện tích xấp xỉ (Shoelace, đơn vị độ² — chỉ dùng để SO SÁNH, không phải m²) */
@@ -221,7 +273,7 @@ export async function parseBoundaryFile(file: File): Promise<{ lat: number; lon:
   }
   if (isKmz) {
     const buffer = await file.arrayBuffer();
-    const xml = extractKmlFromKmz(buffer);
+    const xml = await extractKmlFromKmz(buffer);
     if (!xml) return null;
     return parseKmlPolygon(xml);
   }
@@ -242,7 +294,7 @@ export async function parseLocationFile(file: File): Promise<KmlLocation | null>
 
   if (isKmz) {
     const buffer = await file.arrayBuffer();
-    const xml = extractKmlFromKmz(buffer);
+    const xml = await extractKmlFromKmz(buffer);
     if (!xml) return null;
     return parseKmlText(xml);
   }
