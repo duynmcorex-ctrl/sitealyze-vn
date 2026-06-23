@@ -101,9 +101,35 @@ export function extractKmlFromKmz(buffer: ArrayBuffer): string | null {
   return text.slice(xmlStart, kmlEnd + '</kml>'.length);
 }
 
+/** Diện tích xấp xỉ (Shoelace, đơn vị độ² — chỉ dùng để SO SÁNH, không phải m²) */
+function approxArea(pts: { lat: number; lon: number }[]): number {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+    a += p1.lon * p2.lat - p2.lon * p1.lat;
+  }
+  return Math.abs(a) / 2;
+}
+
+interface KmlCandidate {
+  points: { lat: number; lon: number }[];
+  name: string;
+  area: number;
+  isPolygon: boolean;
+}
+
+/** Tên Placemark/folder gợi ý đây là ranh giới dự án (ưu tiên chọn) */
+const BOUNDARY_NAME_RE = /(ranh\s*gi[ớo]i|boundary|khu\s*v[ựu]c|du\s*an|d[ựu]\s*[áa]n)/i;
+
 /**
- * Trích polygon ranh giới (Polygon/LinearRing, fallback LineString khép) từ KML XML.
- * Trả về danh sách điểm theo thứ tự gốc trong file (không tự khép vòng).
+ * Trích polygon ranh giới từ KML XML.
+ *
+ * KML từ Google Earth Pro thường có NHIỀU Placemark (đường, ranh giới, ghi chú...).
+ * Quét TOÀN BỘ Placemark, gom mọi Polygon/LineString khép kín ≥3 điểm thành candidate,
+ * rồi chọn theo thứ tự ưu tiên:
+ *   1. Tên Placemark/folder chứa từ khoá "ranh giới"/"khu vực"/"dự án"
+ *   2. Polygon (ưu tiên hơn LineString — đường line hay là tuyến giao thông, không phải ranh giới)
+ *   3. Diện tích lớn nhất (ranh giới khu đất thường là hình lớn nhất trong file)
  */
 export function parseKmlPolygon(xml: string): { lat: number; lon: number }[] | null {
   try {
@@ -124,20 +150,60 @@ export function parseKmlPolygon(xml: string): { lat: number; lon: number }[] | n
       return pts.length >= 3 ? pts : null;
     }
 
-    // 1. <Polygon><outerBoundaryIs><LinearRing><coordinates>
-    const polyRing = doc.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
-    const polyPts = coordsFrom(polyRing);
-    if (polyPts) return polyPts;
+    const candidates: KmlCandidate[] = [];
+    const placemarks = Array.from(doc.querySelectorAll('Placemark'));
+    // Fallback: file không có <Placemark> bao ngoài (hiếm) — coi cả document là 1 placemark
+    const scopes: (Element | Document)[] = placemarks.length > 0 ? placemarks : [doc];
 
-    // 2. <LinearRing><coordinates> trực tiếp (không trong Polygon)
-    const ringPts = coordsFrom(doc.querySelector('LinearRing coordinates'));
-    if (ringPts) return ringPts;
+    for (const scope of scopes) {
+      const name = (scope instanceof Element
+        ? scope.querySelector('name')?.textContent?.trim()
+        : undefined) ?? '';
 
-    // 3. <LineString><coordinates> — ranh giới vẽ dạng đường khép
-    const linePts = coordsFrom(doc.querySelector('LineString coordinates'));
-    if (linePts) return linePts;
-  } catch {
-    // ignore
+      // Polygon trước (kể cả nằm trong MultiGeometry)
+      const polyCoordEls = scope.querySelectorAll('Polygon outerBoundaryIs LinearRing coordinates');
+      let foundPolygon = false;
+      polyCoordEls.forEach((el) => {
+        const pts = coordsFrom(el);
+        if (pts) {
+          candidates.push({ points: pts, name, area: approxArea(pts), isPolygon: true });
+          foundPolygon = true;
+        }
+      });
+      if (foundPolygon) continue; // placemark này đã có polygon hợp lệ, không cần xét LineString
+
+      // LineString khép (path vẽ ranh giới không đóng thành Polygon)
+      const lineCoordEls = scope.querySelectorAll('LineString coordinates');
+      lineCoordEls.forEach((el) => {
+        const pts = coordsFrom(el);
+        if (pts) candidates.push({ points: pts, name, area: approxArea(pts), isPolygon: false });
+      });
+    }
+
+    if (candidates.length === 0) {
+      console.warn(
+        `[parseKmlPolygon] Không tìm thấy Polygon/LineString ≥3 điểm trong ${placemarks.length} Placemark. ` +
+        `File có thể chỉ chứa Point/marker, hoặc geometry dùng tag không chuẩn KML.`,
+      );
+      return null;
+    }
+
+    console.log(
+      `[parseKmlPolygon] Tìm thấy ${candidates.length} candidate: ` +
+      candidates.map(c => `"${c.name || '(không tên)'}" ${c.isPolygon ? 'Polygon' : 'LineString'} ${c.points.length}pt`).join(', '),
+    );
+
+    // 1. Ưu tiên tên khớp từ khoá ranh giới
+    const named = candidates.find((c) => BOUNDARY_NAME_RE.test(c.name));
+    if (named) return named.points;
+
+    // 2. Ưu tiên Polygon, trong nhóm đó chọn diện tích lớn nhất
+    const polygons = candidates.filter((c) => c.isPolygon);
+    const pool = polygons.length > 0 ? polygons : candidates;
+    pool.sort((a, b) => b.area - a.area);
+    return pool[0].points;
+  } catch (e) {
+    console.warn('[parseKmlPolygon] Parse lỗi:', e);
   }
   return null;
 }
