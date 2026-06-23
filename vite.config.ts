@@ -26,8 +26,46 @@ function copyLibreDwgWasm() {
   };
 }
 
+/**
+ * Plugin giả lập api/elevation.ts (Vercel Edge Function) khi chạy `vite dev` ở local.
+ * Vite không có Vercel Functions runtime → nếu không có middleware này, fetch('/api/elevation')
+ * sẽ rơi xuống Vite serve file `api/elevation.ts` như module frontend → esbuild crash
+ * ("Invalid loader value"). Đăng ký middleware NÀY trước để chặn request trước khi Vite
+ * cố transform file thật.
+ */
+function devElevationProxy() {
+  return {
+    name: 'dev-elevation-proxy',
+    configureServer(server: { middlewares: { use: (path: string, handler: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void) => void } }) {
+      server.middlewares.use('/api/elevation', async (req, res) => {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const locations = url.searchParams.get('locations');
+        if (!locations) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'missing locations param' }));
+          return;
+        }
+        try {
+          const upstream = await fetch(
+            `https://api.opentopodata.org/v1/srtm30m?locations=${encodeURIComponent(locations)}`,
+          );
+          const body = await upstream.text();
+          res.statusCode = upstream.status;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(body);
+        } catch (e) {
+          res.statusCode = 502;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: e instanceof Error ? e.message : 'upstream fetch failed' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), copyLibreDwgWasm()],
+  plugins: [react(), copyLibreDwgWasm(), devElevationProxy()],
   // Inject version từ package.json vào build (header app hiện badge)
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
