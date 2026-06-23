@@ -44,6 +44,13 @@ export interface Heightmap {
   /** minZ/maxZ gốc khi chưa clip */
   originalMinZ?: number;
   originalMaxZ?: number;
+  /**
+   * Chỉ có ở terrain dựng từ DEM (Google Earth boundary) — 1 = cell nằm trong
+   * ranh giới THẬT (file KMZ/vẽ tay), 0 = vùng mở rộng nghiên cứu xung quanh
+   * (buffer để lưới liền mạch, không lỗ). Dùng để làm mờ vùng buffer khi render,
+   * giúp nổi rõ ranh giới chính — xem TerrainMesh.tsx.
+   */
+  boundaryMask?: Uint8Array;
 }
 
 // ── Auto-generated analysis report ──────────────────────────────────────────

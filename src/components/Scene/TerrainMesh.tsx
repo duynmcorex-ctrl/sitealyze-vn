@@ -157,6 +157,20 @@ export function TerrainMesh() {
         colors[i * 3 + 2] = c.b;
       }
     }
+    // Làm mờ vùng "ranh giới nghiên cứu mở rộng" (buffer quanh ranh giới Google Earth thật)
+    // để ranh giới chính nổi rõ — chỉ áp dụng khi terrain dựng từ DEM có boundaryMask.
+    if (hm.boundaryMask) {
+      const DIM_TOWARD = 0.55; // pha về xám trung tính
+      const DIM_KEEP = 0.4;    // % giữ lại màu gốc
+      for (let i = 0; i < n; i++) {
+        if (!hm.boundaryMask[i]) {
+          colors[i * 3]     = colors[i * 3]     * DIM_KEEP + DIM_TOWARD * (1 - DIM_KEEP);
+          colors[i * 3 + 1] = colors[i * 3 + 1] * DIM_KEEP + DIM_TOWARD * (1 - DIM_KEEP);
+          colors[i * 3 + 2] = colors[i * 3 + 2] * DIM_KEEP + DIM_TOWARD * (1 - DIM_KEEP);
+        }
+      }
+    }
+
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     (geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
   }, [mode, analysis, terrain, geometry, slopeMode, elevColorMode]);

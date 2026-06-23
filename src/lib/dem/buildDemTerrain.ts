@@ -23,14 +23,26 @@ import { buildMeshFromHeightmap } from '../terrain/buildMesh';
 import { smoothHeightmap } from '../terrain/heightmap';
 import type { BoundaryCandidate, Heightmap, TerrainData } from '../types';
 
-const MAX_GRID_DIM = 64;       // tối đa 65×65 điểm lưới (~4225 điểm, ~43 request)
+const MAX_GRID_DIM = 48;       // tối đa 49×49 điểm lưới (~2400 điểm, ~24 request) — giảm từ 64 để load nhanh hơn
 const MIN_CELL_SIZE = 30;      // mét — giới hạn phân giải thật của SRTM 30m
 const MIN_GRID_DIM = 6;
-const BUFFER_RATIO = 0.15;     // mở rộng bbox thêm 15% mỗi chiều
+const BUFFER_RATIO = 0.15;     // mở rộng bbox thêm 15% mỗi chiều — vùng "ranh giới nghiên cứu"
 const BUFFER_MIN_M = 150;      // buffer tối thiểu (m) — đủ cho site nhỏ/ranh giới hẹp
 
 export interface BuildDemTerrainOptions {
   onProgress?: (message: string) => void;
+}
+
+/** Point-in-polygon ray-casting (toạ độ phẳng mét) */
+function pointInPolygon(x: number, y: number, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
 /** Shoelace area (m²) — toạ độ phẳng mét */
@@ -164,10 +176,22 @@ export async function buildTerrainFromBoundary(
   // Gap-fill các điểm null còn lại (SRTM thiếu dữ liệu cục bộ, hiếm) — không để lỗ rỗ
   fillNullGaps(data, mask, width, height);
 
+  // boundaryMask: 1 = trong ranh giới THẬT (KMZ), 0 = vùng buffer mở rộng quanh đó.
+  // Dùng để TerrainMesh.tsx làm mờ vùng buffer, nổi rõ ranh giới chính.
+  const boundaryMask = new Uint8Array(width * height);
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) {
+      const idx = row * width + col;
+      const e = minX + col * cellSize;
+      const n = minY + row * cellSize;
+      if (pointInPolygon(e, n, boundaryXY)) boundaryMask[idx] = 1;
+    }
+  }
+
   let heightmap: Heightmap = {
     width, height, cellSize,
     origin: { x: minX, y: minY },
-    data, minZ, maxZ, mask,
+    data, minZ, maxZ, mask, boundaryMask,
   };
 
   // Smoothing nhẹ — SRTM 30m thô, mượt hoá để terrain mesh đỡ răng cưa
