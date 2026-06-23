@@ -172,6 +172,8 @@ interface KmlCandidate {
 
 /** Tên Placemark/folder gợi ý đây là ranh giới dự án (ưu tiên chọn) */
 const BOUNDARY_NAME_RE = /(ranh\s*gi[ớo]i|boundary|khu\s*v[ựu]c|du\s*an|d[ựu]\s*[áa]n)/i;
+/** Tên gợi ý đây là vùng LOẠI TRỪ / bên ngoài ranh giới — không được ưu tiên dù match BOUNDARY_NAME_RE */
+const EXCLUDE_NAME_RE = /(ngo[àa]i|lo[aạ]i\s*tr[ừu]|kh[oô]ng\s*thu[oộ]c|exclude|outside)/i;
 
 /**
  * Trích polygon ranh giới từ KML XML.
@@ -245,13 +247,19 @@ export function parseKmlPolygon(xml: string): { lat: number; lon: number }[] | n
       candidates.map(c => `"${c.name || '(không tên)'}" ${c.isPolygon ? 'Polygon' : 'LineString'} ${c.points.length}pt`).join(', '),
     );
 
-    // 1. Ưu tiên tên khớp từ khoá ranh giới
-    const named = candidates.find((c) => BOUNDARY_NAME_RE.test(c.name));
+    // 1. Ưu tiên tên khớp từ khoá ranh giới — NHƯNG loại trừ tên kiểu
+    //    "NGOÀI RANH GIỚI..." (vùng loại trừ) cũng match regex ranh giới, dễ bị chọn nhầm
+    const named = candidates.find(
+      (c) => BOUNDARY_NAME_RE.test(c.name) && !EXCLUDE_NAME_RE.test(c.name),
+    );
     if (named) return named.points;
 
-    // 2. Ưu tiên Polygon, trong nhóm đó chọn diện tích lớn nhất
-    const polygons = candidates.filter((c) => c.isPolygon);
-    const pool = polygons.length > 0 ? polygons : candidates;
+    // 2. Ưu tiên Polygon (bỏ qua candidate có tên rõ ràng là vùng loại trừ),
+    //    trong nhóm đó chọn diện tích lớn nhất — ranh giới dự án thường là hình lớn nhất
+    const nonExcluded = candidates.filter((c) => !EXCLUDE_NAME_RE.test(c.name));
+    const pool0 = nonExcluded.length > 0 ? nonExcluded : candidates;
+    const polygons = pool0.filter((c) => c.isPolygon);
+    const pool = polygons.length > 0 ? polygons : pool0;
     pool.sort((a, b) => b.area - a.area);
     return pool[0].points;
   } catch (e) {
