@@ -28,9 +28,12 @@ const MIN_CELL_SIZE = 30;      // mét — giới hạn phân giải thật củ
 const MIN_GRID_DIM = 6;
 const BUFFER_RATIO = 0.15;     // mở rộng bbox thêm 15% mỗi chiều — vùng "ranh giới nghiên cứu"
 const BUFFER_MIN_M = 150;      // buffer tối thiểu (m) — đủ cho site nhỏ/ranh giới hẹp
+const UPSAMPLE_FACTOR = 3;     // nội suy mesh mượt hơn, không gọi thêm API (49×49 → 145×145)
 
 export interface BuildDemTerrainOptions {
   onProgress?: (message: string) => void;
+  /** Override độ rộng buffer (m) quanh ranh giới thật — bỏ qua BUFFER_RATIO mặc định nếu set */
+  bufferOverrideM?: number;
 }
 
 /** Point-in-polygon ray-casting (toạ độ phẳng mét) */
@@ -53,6 +56,45 @@ function shoelaceArea(poly: { x: number; y: number }[]): number {
     a += p1.x * p2.y - p2.x * p1.y;
   }
   return Math.abs(a) / 2;
+}
+
+/**
+ * Upsample heightmap bằng bilinear interpolation — KHÔNG gọi thêm API, chỉ nội suy phía
+ * client để mesh hiển thị mượt hơn lưới DEM thô (SRTM 30m). factor=3: lưới 49×49 → 145×145.
+ * Lưu ý: đây là nội suy thị giác, không tạo thêm độ chính xác cao độ thật.
+ */
+function upsampleHeightmapGrid(
+  data: Float32Array, mask: Uint8Array, width: number, height: number, factor: number,
+): { data: Float32Array; mask: Uint8Array; width: number; height: number } {
+  if (factor <= 1 || width < 2 || height < 2) return { data, mask, width, height };
+  const newWidth = (width - 1) * factor + 1;
+  const newHeight = (height - 1) * factor + 1;
+  const newData = new Float32Array(newWidth * newHeight);
+  const newMask = new Uint8Array(newWidth * newHeight);
+
+  for (let ny = 0; ny < newHeight; ny++) {
+    const fy = ny / factor;
+    const y0 = Math.min(height - 2, Math.floor(fy));
+    const ty = fy - y0;
+    for (let nx = 0; nx < newWidth; nx++) {
+      const fx = nx / factor;
+      const x0 = Math.min(width - 2, Math.floor(fx));
+      const tx = fx - x0;
+      const i00 = y0 * width + x0;
+      const i10 = y0 * width + x0 + 1;
+      const i01 = (y0 + 1) * width + x0;
+      const i11 = (y0 + 1) * width + x0 + 1;
+      const v =
+        data[i00] * (1 - tx) * (1 - ty) +
+        data[i10] * tx * (1 - ty) +
+        data[i01] * (1 - tx) * ty +
+        data[i11] * tx * ty;
+      const idx = ny * newWidth + nx;
+      newData[idx] = v;
+      newMask[idx] = (mask[i00] && mask[i10] && mask[i01] && mask[i11]) ? 1 : 0;
+    }
+  }
+  return { data: newData, mask: newMask, width: newWidth, height: newHeight };
 }
 
 /** Gap-fill các cell mask=0 bằng trung bình 4-hướng lân cận có mask=1 — lặp vài pass để loại nốt lỗ nhỏ */
@@ -121,7 +163,9 @@ export async function buildTerrainFromBoundary(
   }
 
   // ── 3. Buffer bbox ra ngoài ranh giới — tạo lưới RỘNG HƠN để terrain liền mạch ──
-  const bufferM = Math.max(BUFFER_MIN_M, BUFFER_RATIO * Math.max(rawWidthM, rawHeightM));
+  const bufferM = opts.bufferOverrideM != null
+    ? Math.max(0, opts.bufferOverrideM)
+    : Math.max(BUFFER_MIN_M, BUFFER_RATIO * Math.max(rawWidthM, rawHeightM));
   const minX = rawMinX - bufferM, maxX = rawMaxX + bufferM;
   const minY = rawMinY - bufferM, maxY = rawMaxY + bufferM;
   const widthM = maxX - minX, heightM = maxY - minY;
@@ -176,22 +220,28 @@ export async function buildTerrainFromBoundary(
   // Gap-fill các điểm null còn lại (SRTM thiếu dữ liệu cục bộ, hiếm) — không để lỗ rỗ
   fillNullGaps(data, mask, width, height);
 
+  // Upsample bilinear → mesh mượt hơn (không gọi thêm API), boundary cũng được tính lại
+  // trên lưới mịn nên viền ranh giới chính xác/mượt hơn theo.
+  opts.onProgress?.('Đang làm mượt địa hình…');
+  const fine = upsampleHeightmapGrid(data, mask, width, height, UPSAMPLE_FACTOR);
+  const fineCellSize = cellSize / UPSAMPLE_FACTOR;
+
   // boundaryMask: 1 = trong ranh giới THẬT (KMZ), 0 = vùng buffer mở rộng quanh đó.
   // Dùng để TerrainMesh.tsx làm mờ vùng buffer, nổi rõ ranh giới chính.
-  const boundaryMask = new Uint8Array(width * height);
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      const idx = row * width + col;
-      const e = minX + col * cellSize;
-      const n = minY + row * cellSize;
+  const boundaryMask = new Uint8Array(fine.width * fine.height);
+  for (let row = 0; row < fine.height; row++) {
+    for (let col = 0; col < fine.width; col++) {
+      const idx = row * fine.width + col;
+      const e = minX + col * fineCellSize;
+      const n = minY + row * fineCellSize;
       if (pointInPolygon(e, n, boundaryXY)) boundaryMask[idx] = 1;
     }
   }
 
   let heightmap: Heightmap = {
-    width, height, cellSize,
+    width: fine.width, height: fine.height, cellSize: fineCellSize,
     origin: { x: minX, y: minY },
-    data, minZ, maxZ, mask, boundaryMask,
+    data: fine.data, minZ, maxZ, mask: fine.mask, boundaryMask,
   };
 
   // Smoothing nhẹ — SRTM 30m thô, mượt hoá để terrain mesh đỡ răng cưa
@@ -223,7 +273,12 @@ export async function buildTerrainFromBoundary(
     meshIndices: mesh.indices,
     meshNormals: mesh.normals,
     contours: [],
-    bounds: { minX, minY, maxX: minX + width * cellSize, maxY: minY + height * cellSize, minZ, maxZ },
+    bounds: {
+      minX, minY,
+      maxX: minX + heightmap.width * heightmap.cellSize,
+      maxY: minY + heightmap.height * heightmap.cellSize,
+      minZ, maxZ,
+    },
     boundaryCandidates: [boundaryCandidate],
   };
 

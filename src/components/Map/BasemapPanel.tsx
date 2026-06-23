@@ -162,6 +162,7 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
   const setError         = useSiteStore((s) => s.setError);
   const computeForMode   = useSiteStore((s) => s.computeForMode);
   const mode             = useSiteStore((s) => s.mode);
+  const demBufferSizeM   = useSiteStore((s) => s.demBufferSizeM);
   const [genBusy, setGenBusy] = useState(false);
   const [genMsg, setGenMsg]   = useState('');
 
@@ -640,6 +641,7 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
     try {
       const result = await buildTerrainFromBoundary(points, {
         onProgress: (msg) => setGenMsg(msg),
+        bufferOverrideM: demBufferSizeM,
       });
       setTerrain(result);
       computeForMode(mode);

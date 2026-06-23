@@ -26,6 +26,7 @@ export function TerrainMesh() {
   const terrainRenderMode = useSiteStore((s) => s.terrainRenderMode);
   const elevColorMode = useSiteStore((s) => s.elevColorMode);
   const setClickedPoint = useSiteStore((s) => s.setClickedPoint);
+  const demBufferDim = useSiteStore((s) => s.demBufferDim);
   const meshRef = useRef<THREE.Mesh>(null);
 
   const geometry = useMemo(() => {
@@ -159,9 +160,10 @@ export function TerrainMesh() {
     }
     // Làm mờ vùng "ranh giới nghiên cứu mở rộng" (buffer quanh ranh giới Google Earth thật)
     // để ranh giới chính nổi rõ — chỉ áp dụng khi terrain dựng từ DEM có boundaryMask.
-    if (hm.boundaryMask) {
+    // demBufferDim: 0 = không mờ (giữ nguyên màu), 1 = mờ tối đa (gần như xám trung tính).
+    if (hm.boundaryMask && demBufferDim > 0) {
       const DIM_TOWARD = 0.55; // pha về xám trung tính
-      const DIM_KEEP = 0.4;    // % giữ lại màu gốc
+      const DIM_KEEP = 1 - demBufferDim;
       for (let i = 0; i < n; i++) {
         if (!hm.boundaryMask[i]) {
           colors[i * 3]     = colors[i * 3]     * DIM_KEEP + DIM_TOWARD * (1 - DIM_KEEP);
@@ -173,7 +175,7 @@ export function TerrainMesh() {
 
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     (geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
-  }, [mode, analysis, terrain, geometry, slopeMode, elevColorMode]);
+  }, [mode, analysis, terrain, geometry, slopeMode, elevColorMode, demBufferDim]);
 
   // Center camera on first load
   useEffect(() => {

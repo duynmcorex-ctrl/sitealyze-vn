@@ -28,6 +28,8 @@ export function TerrainTab() {
   const contourCount         = useSiteStore(s => s.contourCount);
   const selectedBoundaryIdx  = useSiteStore(s => s.selectedBoundaryIdx);
   const setSelectedBoundaryIdx = useSiteStore(s => s.setSelectedBoundaryIdx);
+  const demBufferDim        = useSiteStore(s => s.demBufferDim);
+  const setDemBufferDim     = useSiteStore(s => s.setDemBufferDim);
 
   const boundaryCandidates = terrain?.boundaryCandidates ?? [];
 
@@ -185,6 +187,30 @@ export function TerrainTab() {
               </div>
             );
           })()}
+
+          {/* ── Độ mờ vùng mở rộng nghiên cứu (chỉ hiện với terrain dựng từ DEM Google Earth) ── */}
+          {terrain?.heightmap.boundaryMask && (
+            <div className="rounded border border-cyan-400/30 bg-cyan-500/5 p-2">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-cyan-300">
+                  Vùng mở rộng nghiên cứu
+                </div>
+                <span className="text-[9px] text-slate-500 font-mono">{Math.round(demBufferDim * 100)}% mờ</span>
+              </div>
+              <input
+                type="range"
+                min={0} max={1} step={0.05}
+                value={demBufferDim}
+                onChange={(e) => setDemBufferDim(Number(e.target.value))}
+                className="w-full h-1 accent-cyan-400"
+                title="Độ mờ vùng buffer quanh ranh giới thật — 0% = hiện rõ như ranh giới chính, 100% = mờ tối đa"
+              />
+              <div className="text-[9.5px] text-slate-500 mt-1 leading-snug">
+                Kéo về 0% để xem toàn bộ rõ nét, hoặc dùng dropdown "Ranh giới hiển thị" ↑
+                để ẨN HẲN vùng này (chỉ giữ đúng ranh giới KMZ/vẽ tay).
+              </div>
+            </div>
+          )}
 
           {/* Min/Max cao độ — chỉ hiển thị (read-only), absolute từ file gốc */}
           {terrain && (

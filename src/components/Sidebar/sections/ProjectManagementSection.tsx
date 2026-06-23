@@ -42,6 +42,8 @@ export function ProjectManagementSection() {
   const startGisDraw    = useSiteStore(s => s.startGisDraw);
   const toggleBasemap   = useSiteStore(s => s.toggleBasemap);
   const showBasemap     = useSiteStore(s => s.showBasemap);
+  const demBufferSizeM    = useSiteStore(s => s.demBufferSizeM);
+  const setDemBufferSizeM = useSiteStore(s => s.setDemBufferSizeM);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const kmlInputRef   = useRef<HTMLInputElement>(null);
@@ -58,7 +60,7 @@ export function ProjectManagementSection() {
       if (!points || points.length < 3) {
         throw new Error('Không tìm thấy polygon ranh giới trong file (cần Polygon/LinearRing ≥3 điểm).');
       }
-      const terrain = await buildTerrainFromBoundary(points);
+      const terrain = await buildTerrainFromBoundary(points, { bufferOverrideM: demBufferSizeM });
       setTerrain(terrain);
       computeForMode(mode);
     } catch (e) {
@@ -216,6 +218,23 @@ export function ProjectManagementSection() {
             e.target.value = '';
           }}
         />
+        <div className="mt-2 flex items-center gap-2">
+          <label className="text-[9.5px] text-slate-500 uppercase tracking-wider shrink-0">
+            Mở rộng nghiên cứu
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={2000}
+            step={50}
+            value={demBufferSizeM}
+            onChange={(e) => setDemBufferSizeM(Number(e.target.value))}
+            disabled={genBusy}
+            className="w-20 px-1.5 py-0.5 text-[10px] bg-bg-dark border border-white/10 rounded
+                       text-slate-100 outline-none focus:border-amber-400/50 disabled:opacity-40"
+          />
+          <span className="text-[9.5px] text-slate-500">m quanh ranh giới (0 = chỉ đúng ranh giới)</span>
+        </div>
         <p className="mt-1 text-[9.5px] text-slate-600 leading-snug">
           Dùng DEM SRTM 30m (miễn phí) — phù hợp phân tích tổng quan, không thay thế file
           khảo sát CAD cho thiết kế chi tiết 1/500.

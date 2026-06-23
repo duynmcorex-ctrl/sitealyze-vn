@@ -236,6 +236,15 @@ interface State {
   /** Set boundary; null = bỏ clip (terrain quay về full coverage) */
   setSelectedBoundaryIdx: (i: number | null) => void;
 
+  /** Độ mờ vùng "ranh giới nghiên cứu mở rộng" của terrain dựng từ DEM (0=không mờ, 1=mờ tối đa).
+   *  Chỉ áp dụng khi terrain.heightmap.boundaryMask tồn tại — xem TerrainMesh.tsx. */
+  demBufferDim: number;
+  setDemBufferDim: (v: number) => void;
+  /** Độ rộng (m) buffer mở rộng quanh ranh giới Google Earth thật khi tạo terrain DEM.
+   *  Setting trước khi generate — dùng chung cho upload KML và vẽ tay trên bản đồ. */
+  demBufferSizeM: number;
+  setDemBufferSizeM: (v: number) => void;
+
   // ── Per-type massing override (Mục 3 PlanningSection) ─────────────────────
   /** Override MĐXD/Tầng cho từng LanduseType — áp cho TẤT CẢ parcel cùng type
    *  nếu parcel đó CHƯA có indicator riêng từ DXF/Excel.
@@ -396,6 +405,10 @@ export const useSiteStore = create<State>((set, get) => ({
 
   // ── Boundary picker ──────────────────────────────────────────────────────
   selectedBoundaryIdx: null,
+  demBufferDim: 0.6,
+  setDemBufferDim: (v) => set({ demBufferDim: Math.min(1, Math.max(0, v)) }),
+  demBufferSizeM: 200,
+  setDemBufferSizeM: (v) => set({ demBufferSizeM: Math.max(0, v) }),
   setSelectedBoundaryIdx: (i) => {
     set({ selectedBoundaryIdx: i });
     const t = get().terrain;
