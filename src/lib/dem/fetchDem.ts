@@ -5,9 +5,15 @@
  * API: https://www.opentopodata.org/ — public instance, free, không cần key.
  * Hạn chế: tối đa 100 điểm/request, rate limit ~1 request/giây.
  * Dataset: srtm30m (phủ 60°S–60°N — đủ toàn bộ Việt Nam).
+ *
+ * QUAN TRỌNG: OpenTopoData KHÔNG trả Access-Control-Allow-Origin header, nên
+ * gọi trực tiếp từ browser bị CORS chặn ngầm (fetch throws, catch nuốt lỗi →
+ * mọi elevation về null, lỗi "không lấy được cao độ" dù toạ độ đúng).
+ * → Gọi qua proxy `/api/elevation` (Vercel Edge Function, server-to-server,
+ *   không bị CORS chi phối) — xem api/elevation.ts.
  */
 
-const OPENTOPODATA_URL = 'https://api.opentopodata.org/v1/srtm30m';
+const ELEVATION_PROXY_URL = '/api/elevation';
 const BATCH_SIZE = 100;
 const BATCH_DELAY_MS = 1100; // > 1s để tránh rate limit (1 req/s)
 
@@ -28,8 +34,8 @@ export async function fetchElevations(
     const locations = batch.map((p) => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`).join('|');
 
     try {
-      const res = await fetch(`${OPENTOPODATA_URL}?locations=${encodeURIComponent(locations)}`);
-      if (!res.ok) throw new Error(`OpenTopoData HTTP ${res.status}`);
+      const res = await fetch(`${ELEVATION_PROXY_URL}?locations=${encodeURIComponent(locations)}`);
+      if (!res.ok) throw new Error(`Elevation proxy HTTP ${res.status}`);
       const data = await res.json();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = data.results ?? [];
