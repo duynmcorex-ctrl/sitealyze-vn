@@ -103,6 +103,83 @@ export function vn2000ToLatLon(
   };
 }
 
+/** Forward Transverse Mercator: (lat, lon) độ → (easting, northing) mét */
+export function latLonToVN2000(
+  lat: number,
+  lon: number,
+  opts?: VN2000Options,
+): { easting: number; northing: number } {
+  const o = { ...DEFAULT_OPTS, ...opts };
+  const lambda0 = (o.centralMeridian * Math.PI) / 180;
+  const phi = (lat * Math.PI) / 180;
+  const lambda = (lon * Math.PI) / 180;
+
+  const sinPhi = Math.sin(phi);
+  const cosPhi = Math.cos(phi);
+  const tanPhi = Math.tan(phi);
+
+  const N = A / Math.sqrt(1 - E2 * sinPhi * sinPhi);
+  const T = tanPhi * tanPhi;
+  const C = EP2 * cosPhi * cosPhi;
+  const Aterm = (lambda - lambda0) * cosPhi;
+
+  // Meridional arc length M (Snyder eq. 3-21)
+  const M =
+    A *
+    (
+      (1 - E2 / 4 - (3 * E2 * E2) / 64 - (5 * E2 * E2 * E2) / 256) * phi -
+      ((3 * E2) / 8 + (3 * E2 * E2) / 32 + (45 * E2 * E2 * E2) / 1024) * Math.sin(2 * phi) +
+      ((15 * E2 * E2) / 256 + (45 * E2 * E2 * E2) / 1024) * Math.sin(4 * phi) -
+      ((35 * E2 * E2 * E2) / 3072) * Math.sin(6 * phi)
+    );
+
+  const A2 = Aterm * Aterm;
+  const A3 = A2 * Aterm;
+  const A4 = A3 * Aterm;
+  const A5 = A4 * Aterm;
+  const A6 = A5 * Aterm;
+
+  const easting =
+    o.falseEasting +
+    o.k0 * N * (
+      Aterm +
+      ((1 - T + C) * A3) / 6 +
+      ((5 - 18 * T + T * T + 72 * C - 58 * EP2) * A5) / 120
+    );
+
+  const northing =
+    o.falseNorthing +
+    o.k0 * (
+      M +
+      N * tanPhi * (
+        A2 / 2 +
+        ((5 - T + 9 * C + 4 * C * C) * A4) / 24 +
+        ((61 - 58 * T + T * T + 600 * C - 330 * EP2) * A6) / 720
+      )
+    );
+
+  return { easting, northing };
+}
+
+/**
+ * Chọn kinh tuyến trục phù hợp nhất cho một điểm (lat, lon) — dùng khi
+ * xây ranh giới từ Google Earth (lat/lon thật, không có gợi ý từ file CAD).
+ * Ưu tiên: tỉnh match trong PROVINCE_BBOXES > kinh tuyến gần lon nhất.
+ */
+export function pickMeridianForLatLon(lat: number, lon: number): VN2000Options {
+  const province = PROVINCE_BBOXES.find(p =>
+    lat >= p.minLat && lat <= p.maxLat && lon >= p.minLon && lon <= p.maxLon,
+  );
+  let best = CANDIDATE_MERIDIANS[0];
+  let bestDist = Infinity;
+  for (const c of CANDIDATE_MERIDIANS) {
+    const dist = Math.abs(lon - c.meridian);
+    if (dist < bestDist) { bestDist = dist; best = c; }
+  }
+  void province; // (reserved cho fine-tune theo tỉnh trong tương lai)
+  return { centralMeridian: best.meridian, k0: best.k0 };
+}
+
 /** Bbox của Việt Nam (mở rộng 0.5° mỗi chiều để không bỏ sót biên giới) */
 const VN_BBOX = { minLat: 7.5, maxLat: 24.0, minLon: 101.5, maxLon: 110.5 };
 

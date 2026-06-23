@@ -10,13 +10,15 @@
  *   6. Save / Mở .siteproj.json
  */
 
-import { useRef } from 'react';
-import { Plus, Eye, EyeOff, X, Save, FolderOpen } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Plus, Eye, EyeOff, X, Save, FolderOpen, MapPin, Upload } from 'lucide-react';
 import { useSiteStore } from '../../../store/useSiteStore';
 import { FileUpload } from '../FileUpload';
 import { LayerPanel } from '../LayerPanel';
 import { ScenesPanel } from '../ScenesPanel';
 import { saveProject, loadProject } from '../../../lib/project/saveLoad';
+import { parseBoundaryFile } from '../../../lib/coord/parseKml';
+import { buildTerrainFromBoundary } from '../../../lib/dem/buildDemTerrain';
 
 export function ProjectManagementSection() {
   const projects        = useSiteStore(s => s.projects);
@@ -36,10 +38,41 @@ export function ProjectManagementSection() {
   const computeForMode  = useSiteStore(s => s.computeForMode);
   const mode            = useSiteStore(s => s.mode);
   const setError        = useSiteStore(s => s.setError);
+  const setLoading      = useSiteStore(s => s.setLoading);
+  const startGisDraw    = useSiteStore(s => s.startGisDraw);
+  const toggleBasemap   = useSiteStore(s => s.toggleBasemap);
+  const showBasemap     = useSiteStore(s => s.showBasemap);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const kmlInputRef   = useRef<HTMLInputElement>(null);
+  const [genBusy, setGenBusy] = useState(false);
 
   const active = projects.find(p => p.id === activeProjectId);
+
+  const handleKmlBoundary = async (file: File) => {
+    setGenBusy(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const points = await parseBoundaryFile(file);
+      if (!points || points.length < 3) {
+        throw new Error('Không tìm thấy polygon ranh giới trong file (cần Polygon/LinearRing ≥3 điểm).');
+      }
+      const terrain = await buildTerrainFromBoundary(points);
+      setTerrain(terrain);
+      computeForMode(mode);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Lỗi không xác định khi đọc ranh giới KML/KMZ.');
+    } finally {
+      setGenBusy(false);
+      setLoading(false);
+    }
+  };
+
+  const handleDrawBoundary = () => {
+    startGisDraw();
+    if (!showBasemap) toggleBasemap();
+  };
 
   const handleSave = () => {
     if (!terrain) {
@@ -143,6 +176,50 @@ export function ProjectManagementSection() {
       <div>
         <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Tải file địa hình</div>
         <FileUpload />
+      </div>
+
+      {/* ── 3b. Tạo địa hình từ ranh giới Google Earth (DEM SRTM 30m) ── */}
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
+          Hoặc tạo địa hình từ ranh giới Google Earth
+        </div>
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => kmlInputRef.current?.click()}
+            disabled={genBusy}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md
+                       bg-amber-500/10 border border-amber-400/40 text-amber-300
+                       hover:bg-amber-500/20 transition text-[10.5px] font-bold disabled:opacity-40"
+            title="Tải file .kml/.kmz có Polygon ranh giới xuất từ Google Earth"
+          >
+            <Upload size={11} /> Tải KML/KMZ ranh giới
+          </button>
+          <button
+            onClick={handleDrawBoundary}
+            disabled={genBusy}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md
+                       bg-amber-500/10 border border-amber-400/40 text-amber-300
+                       hover:bg-amber-500/20 transition text-[10.5px] font-bold disabled:opacity-40"
+            title="Mở bản đồ vệ tinh, click để vẽ ranh giới trực tiếp"
+          >
+            <MapPin size={11} /> Vẽ ranh giới trên bản đồ
+          </button>
+        </div>
+        <input
+          ref={kmlInputRef}
+          type="file"
+          accept=".kml,.KML,.kmz,.KMZ"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleKmlBoundary(f);
+            e.target.value = '';
+          }}
+        />
+        <p className="mt-1 text-[9.5px] text-slate-600 leading-snug">
+          Dùng DEM SRTM 30m (miễn phí) — phù hợp phân tích tổng quan, không thay thế file
+          khảo sát CAD cho thiết kế chi tiết 1/500.
+        </p>
       </div>
 
       {/* ── 4. Lớp dữ liệu ── */}

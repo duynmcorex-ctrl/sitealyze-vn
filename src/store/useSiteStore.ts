@@ -138,6 +138,14 @@ interface State {
   showBasemap: boolean;
   toggleBasemap: () => void;
 
+  /** Vẽ ranh giới Google Earth trực tiếp trên BasemapPanel để tạo địa hình DEM */
+  gisDrawMode: boolean;
+  gisDrawPoints: { lat: number; lon: number }[];
+  startGisDraw: () => void;
+  addGisDrawPoint: (pt: { lat: number; lon: number }) => void;
+  undoGisDrawPoint: () => void;
+  cancelGisDraw: () => void;
+
   /** Giao diện: 'dark' (mặc định) hoặc 'light' */
   theme: 'dark' | 'light';
   toggleTheme: () => void;
@@ -328,6 +336,8 @@ export const useSiteStore = create<State>((set, get) => ({
   geo: null,
   showRoads: true,
   showBasemap: false,
+  gisDrawMode: false,
+  gisDrawPoints: [],
   theme: 'dark',
   projects: [],
   activeProjectId: null,
@@ -792,6 +802,11 @@ export const useSiteStore = create<State>((set, get) => ({
 
   toggleRoads: () => set((s) => ({ showRoads: !s.showRoads })),
   toggleBasemap: () => set((s) => ({ showBasemap: !s.showBasemap })),
+
+  startGisDraw: () => set({ gisDrawMode: true, gisDrawPoints: [] }),
+  addGisDrawPoint: (pt) => set((s) => ({ gisDrawPoints: [...s.gisDrawPoints, pt] })),
+  undoGisDrawPoint: () => set((s) => ({ gisDrawPoints: s.gisDrawPoints.slice(0, -1) })),
+  cancelGisDraw: () => set({ gisDrawMode: false, gisDrawPoints: [] }),
 
   toggleTheme: () => {
     const next = get().theme === 'dark' ? 'light' : 'dark';

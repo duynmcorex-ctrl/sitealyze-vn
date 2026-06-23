@@ -16,8 +16,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useSiteStore } from '../../store/useSiteStore';
 import { detectVN2000Zone, vn2000ToLatLon } from '../../lib/coord/vn2000';
 import type { VN2000Options } from '../../lib/coord/vn2000';
-import { School, Hospital, Building2, ShoppingBag, Droplets, X, Layers, RefreshCw, Mountain, Box, Palette, Waves } from 'lucide-react';
+import { School, Hospital, Building2, ShoppingBag, Droplets, X, Layers, RefreshCw, Mountain, Box, Palette, Waves, MapPin, Check, Undo2, Ban } from 'lucide-react';
 import { buildElevationHeatmapDataURL, buildFloodDataURL, getElevHeatmapColor } from '../../lib/render/elevationHeatmapImage';
+import { buildTerrainFromBoundary } from '../../lib/dem/buildDemTerrain';
 
 // ── OSM POI layer definitions ──────────────────────────────────────────────
 interface PoiLayer {
@@ -151,6 +152,19 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
   const terrain = useSiteStore((s) => s.terrain);
   const geo     = useSiteStore((s) => s.geo);
 
+  const gisDrawMode      = useSiteStore((s) => s.gisDrawMode);
+  const gisDrawPoints    = useSiteStore((s) => s.gisDrawPoints);
+  const addGisDrawPoint  = useSiteStore((s) => s.addGisDrawPoint);
+  const undoGisDrawPoint = useSiteStore((s) => s.undoGisDrawPoint);
+  const cancelGisDraw    = useSiteStore((s) => s.cancelGisDraw);
+  const setTerrain       = useSiteStore((s) => s.setTerrain);
+  const setLoading       = useSiteStore((s) => s.setLoading);
+  const setError         = useSiteStore((s) => s.setError);
+  const computeForMode   = useSiteStore((s) => s.computeForMode);
+  const mode             = useSiteStore((s) => s.mode);
+  const [genBusy, setGenBusy] = useState(false);
+  const [genMsg, setGenMsg]   = useState('');
+
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<maplibregl.Map | null>(null);
   const markersRef   = useRef<maplibregl.Marker[]>([]);
@@ -192,7 +206,6 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
   // Khởi tạo map
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
-    if (!terrain) return;
 
     // Nếu chưa có geo (file re-center về 0,0), center về trung tâm VN
     const lat = geo?.lat ?? 16.0;
@@ -522,6 +535,7 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
     const hm = terrain.heightmap;
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
+      if (gisDrawMode) return; // đang vẽ ranh giới — không hiện popup cao độ
       // Chỉ show khi 1 trong 2 overlay đang bật
       if (!showElevHeatmap && !showFlood) return;
 
@@ -563,7 +577,81 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
 
     map.on('click', onClick);
     return () => { map.off('click', onClick); };
-  }, [showElevHeatmap, showFlood, waterLevel, mapReady, terrain, geo]);
+  }, [showElevHeatmap, showFlood, waterLevel, mapReady, terrain, geo, gisDrawMode]);
+
+  // ── Vẽ ranh giới Google Earth: click thêm điểm khi gisDrawMode bật ──────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !gisDrawMode) return;
+
+    const onDrawClick = (e: maplibregl.MapMouseEvent) => {
+      addGisDrawPoint({ lat: e.lngLat.lat, lon: e.lngLat.lng });
+    };
+    map.on('click', onDrawClick);
+    map.getCanvas().style.cursor = 'crosshair';
+    return () => {
+      map.off('click', onDrawClick);
+      map.getCanvas().style.cursor = '';
+    };
+  }, [gisDrawMode, mapReady, addGisDrawPoint]);
+
+  // ── Render polygon ranh giới đang vẽ (GeoJSON line + fill + điểm) ───────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const SRC = 'gis-draw-src';
+    const FILL = 'gis-draw-fill', LINE = 'gis-draw-line', PTS = 'gis-draw-points';
+    const cleanup = () => {
+      [FILL, LINE, PTS].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
+      if (map.getSource(SRC)) map.removeSource(SRC);
+    };
+    if (!gisDrawMode || gisDrawPoints.length === 0) { cleanup(); return; }
+
+    const ring = gisDrawPoints.map((p) => [p.lon, p.lat] as [number, number]);
+    const closedRing = gisDrawPoints.length >= 3 ? [...ring, ring[0]] : ring;
+
+    const features: GeoJSON.Feature[] = [
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: closedRing }, properties: {} },
+      { type: 'Feature', geometry: { type: 'MultiPoint', coordinates: ring }, properties: {} },
+    ];
+    if (gisDrawPoints.length >= 3) {
+      features.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [closedRing] }, properties: {} });
+    }
+    const geojson: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+
+    if (map.getSource(SRC)) {
+      (map.getSource(SRC) as maplibregl.GeoJSONSource).setData(geojson);
+    } else {
+      map.addSource(SRC, { type: 'geojson', data: geojson });
+      map.addLayer({ id: FILL, type: 'fill', source: SRC, filter: ['==', '$type', 'Polygon'],
+        paint: { 'fill-color': '#FBBF24', 'fill-opacity': 0.15 } });
+      map.addLayer({ id: LINE, type: 'line', source: SRC, filter: ['==', '$type', 'LineString'],
+        paint: { 'line-color': '#FBBF24', 'line-width': 2.5 } });
+      map.addLayer({ id: PTS, type: 'circle', source: SRC, filter: ['==', '$type', 'Point'],
+        paint: { 'circle-radius': 4, 'circle-color': '#FBBF24', 'circle-stroke-color': '#000', 'circle-stroke-width': 1 } });
+    }
+    return cleanup;
+  }, [gisDrawMode, gisDrawPoints, mapReady]);
+
+  /** Sinh terrain DEM từ polygon lat/lon (dùng chung cho draw-on-map và KML upload) */
+  const generateFromBoundary = useCallback(async (points: { lat: number; lon: number }[]) => {
+    setGenBusy(true);
+    setError(null);
+    try {
+      const result = await buildTerrainFromBoundary(points, {
+        onProgress: (msg) => setGenMsg(msg),
+      });
+      setTerrain(result);
+      computeForMode(mode);
+      cancelGisDraw();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Lỗi không xác định khi tạo địa hình từ ranh giới.');
+    } finally {
+      setGenBusy(false);
+      setGenMsg('');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Toggle địa hình 3D (DEM exaggeration) - bật/tắt source terrain
   useEffect(() => {
@@ -629,16 +717,43 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
     }
   }, [activePoi, overpassBbox, clearMarkers]);
 
-  if (!terrain) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-bg-dark">
-        <p className="text-slate-500 text-sm">Tải file CAD trước để xem bản đồ địa lý</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full relative">
+      {/* ── Draw-boundary toolbar (chỉ hiện khi gisDrawMode bật) ── */}
+      {gisDrawMode && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border-b border-amber-400/30 shrink-0 flex-wrap">
+          <MapPin size={13} className="text-amber-400" />
+          <span className="text-[11px] text-amber-300 font-semibold">
+            Click bản đồ để vẽ ranh giới — {gisDrawPoints.length} điểm
+          </span>
+          <button
+            onClick={undoGisDrawPoint}
+            disabled={gisDrawPoints.length === 0 || genBusy}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border
+                       border-white/15 text-slate-300 hover:bg-white/5 disabled:opacity-40 transition"
+          >
+            <Undo2 size={10} /> Xoá điểm cuối
+          </button>
+          <button
+            onClick={() => generateFromBoundary(gisDrawPoints)}
+            disabled={gisDrawPoints.length < 3 || genBusy}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border
+                       border-accent-teal/50 bg-accent-teal/15 text-accent-teal hover:bg-accent-teal/25
+                       disabled:opacity-40 transition"
+          >
+            <Check size={10} /> Hoàn tất & Tạo địa hình
+          </button>
+          <button
+            onClick={cancelGisDraw}
+            disabled={genBusy}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border
+                       border-red-400/40 text-red-300 hover:bg-red-500/10 disabled:opacity-40 transition ml-auto"
+          >
+            <Ban size={10} /> Hủy vẽ
+          </button>
+        </div>
+      )}
+
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-2 px-3 py-2 bg-bg-panel border-b border-white/10 shrink-0 flex-wrap">
         {/* Base style toggle — 3 options */}
@@ -796,6 +911,16 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
       {/* ── Map container ── */}
       <div ref={mapContainer} className="flex-1 min-h-0" />
 
+      {/* ── Loading overlay khi đang sinh terrain từ DEM ── */}
+      {genBusy && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-bg-base/70 backdrop-blur-sm">
+          <div className="px-6 py-4 panel rounded-lg flex items-center gap-3">
+            <div className="w-3 h-3 rounded-full bg-accent-teal animate-pulse" />
+            <span className="text-slate-200 text-sm">{genMsg || 'Đang tạo địa hình…'}</span>
+          </div>
+        </div>
+      )}
+
       {/* ── Elevation legend (topographic-map.com style) — hiện khi showElevHeatmap ── */}
       {showElevHeatmap && terrain && (() => {
         const { minZ, maxZ } = terrain.heightmap;
@@ -848,14 +973,25 @@ export function BasemapPanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* Chú thích khu đất */}
-      <div className="absolute bottom-8 left-3 z-10 flex items-center gap-2 px-2 py-1 rounded-md
-                      bg-bg-dark/80 backdrop-blur border border-white/10 text-[10px] pointer-events-none">
-        <span className="w-5 h-0.5 rounded" style={{ background: '#00E5CC', border: '1px dashed #00E5CC' }} />
-        <span className="text-slate-300">Ranh giới khu đất</span>
-        <span className="text-slate-600 ml-1">·</span>
-        <span className="text-slate-400">Bán kính POI ~3 km</span>
-      </div>
+      {/* Chú thích khu đất — chỉ hiện khi đã có terrain (DXF hoặc DEM) */}
+      {terrain && !gisDrawMode && (
+        <div className="absolute bottom-8 left-3 z-10 flex items-center gap-2 px-2 py-1 rounded-md
+                        bg-bg-dark/80 backdrop-blur border border-white/10 text-[10px] pointer-events-none">
+          <span className="w-5 h-0.5 rounded" style={{ background: '#00E5CC', border: '1px dashed #00E5CC' }} />
+          <span className="text-slate-300">Ranh giới khu đất</span>
+          <span className="text-slate-600 ml-1">·</span>
+          <span className="text-slate-400">Bán kính POI ~3 km</span>
+        </div>
+      )}
+
+      {/* Gợi ý khi chưa có terrain và không ở chế độ vẽ — hướng dẫn cách bắt đầu */}
+      {!terrain && !gisDrawMode && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-md
+                        bg-bg-dark/85 backdrop-blur border border-white/10 text-[10.5px] text-slate-300 pointer-events-none">
+          Chưa có địa hình — dùng nút <b className="text-amber-300">"Vẽ ranh giới trên bản đồ"</b> hoặc
+          {' '}<b className="text-amber-300">"Tải KML/KMZ ranh giới"</b> ở Sidebar mục Quản lý dự án
+        </div>
+      )}
     </div>
   );
 }

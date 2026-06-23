@@ -102,6 +102,67 @@ export function extractKmlFromKmz(buffer: ArrayBuffer): string | null {
 }
 
 /**
+ * Trích polygon ranh giới (Polygon/LinearRing, fallback LineString khép) từ KML XML.
+ * Trả về danh sách điểm theo thứ tự gốc trong file (không tự khép vòng).
+ */
+export function parseKmlPolygon(xml: string): { lat: number; lon: number }[] | null {
+  try {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+
+    function coordsFrom(el: Element | null): { lat: number; lon: number }[] | null {
+      if (!el) return null;
+      const pairs = (el.textContent ?? '').trim().split(/\s+/);
+      const pts: { lat: number; lon: number }[] = [];
+      for (const pair of pairs) {
+        const p = pair.split(',');
+        if (p.length >= 2) {
+          const lon = parseFloat(p[0]);
+          const lat = parseFloat(p[1]);
+          if (isFinite(lon) && isFinite(lat)) pts.push({ lat, lon });
+        }
+      }
+      return pts.length >= 3 ? pts : null;
+    }
+
+    // 1. <Polygon><outerBoundaryIs><LinearRing><coordinates>
+    const polyRing = doc.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
+    const polyPts = coordsFrom(polyRing);
+    if (polyPts) return polyPts;
+
+    // 2. <LinearRing><coordinates> trực tiếp (không trong Polygon)
+    const ringPts = coordsFrom(doc.querySelector('LinearRing coordinates'));
+    if (ringPts) return ringPts;
+
+    // 3. <LineString><coordinates> — ranh giới vẽ dạng đường khép
+    const linePts = coordsFrom(doc.querySelector('LineString coordinates'));
+    if (linePts) return linePts;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Entry point: nhận File (KML hoặc KMZ) và trả về polygon ranh giới (lat/lon).
+ */
+export async function parseBoundaryFile(file: File): Promise<{ lat: number; lon: number }[] | null> {
+  const isKmz = /\.kmz$/i.test(file.name);
+  const isKml = /\.kml$/i.test(file.name);
+
+  if (isKml) {
+    const text = await file.text();
+    return parseKmlPolygon(text);
+  }
+  if (isKmz) {
+    const buffer = await file.arrayBuffer();
+    const xml = extractKmlFromKmz(buffer);
+    if (!xml) return null;
+    return parseKmlPolygon(xml);
+  }
+  return null;
+}
+
+/**
  * Entry point: nhận File (KML hoặc KMZ) và trả về vị trí.
  */
 export async function parseLocationFile(file: File): Promise<KmlLocation | null> {
