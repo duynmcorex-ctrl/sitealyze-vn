@@ -164,6 +164,24 @@ export function AutoViewpoints() {
   const place = (s: SuggestedViewpoint) => {
     setViewpoint({ x: s.x, z: s.z, height: s.suggestedHeight });
     setMode('viewshed');
+
+    // Fly camera đến gần điểm vừa chọn — để user thấy NGAY vị trí đỉnh/thung lũng/mặt
+    // nước trên terrain 3D, không phải tự mò xoay camera đi tìm marker nhỏ.
+    if (terrain) {
+      const hm = terrain.heightmap;
+      const sizeM = Math.max(hm.width, hm.height) * hm.cellSize;
+      const dist = Math.min(300, Math.max(40, sizeM * 0.15));
+      useSiteStore.setState({
+        pendingSceneLoad: {
+          id: 'auto-viewpoint-fly',
+          name: s.label,
+          position: [s.x + dist * 0.6, s.zElev + dist * 0.5, s.z + dist * 0.6],
+          target: [s.x, s.zElev, s.z],
+          fov: 50,
+          createdAt: Date.now(),
+        },
+      });
+    }
   };
 
   if (suggestions.length === 0) {
