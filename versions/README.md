@@ -99,3 +99,4 @@ Folder `versions/` được loại trừ khỏi git (`.gitignore` chứa `versio
 |---------|-------|---------|
 | **v0.6.0-flood-climate** | Flood sim 3D + climate panel + topographic gradient | `versions\v0.6.0-flood-climate\MO_APP.bat` |
 | **v0.7.0-sidebar-redesign** | 6 mục collapsible SketchUp-style + scene save + SWOT + resize | (chạy `save-version.bat v0.7.0-sidebar-redesign` để tạo) |
+| **v0.8.0-minimal-ui-montserrat** | Fix lệch màu cao độ giữa clip/buffer, nút tắt/bật lưới, xuất ảnh 4K cho slide, UI tối giản (bỏ viền bảng dư), font Montserrat | `versions\v0.8.0-minimal-ui-montserrat\MO_APP.bat` |
