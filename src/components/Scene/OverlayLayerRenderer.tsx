@@ -1,5 +1,4 @@
-import { useMemo } from 'react';
-import * as THREE from 'three';
+import { Line } from '@react-three/drei';
 import type { OverlayLayer } from '../../lib/types';
 import { useSiteStore } from '../../store/useSiteStore';
 
@@ -14,24 +13,28 @@ export function OverlayLayerRenderer() {
   );
 }
 
+/**
+ * Dùng drei <Line> (Line2/LineMaterial) thay vì THREE.LineSegments + LineBasicMaterial.
+ * LineBasicMaterial.linewidth bị driver WebGL bỏ qua trên hầu hết platform (luôn render
+ * 1px bất kể giá trị set) — đây là giới hạn của OpenGL/ANGLE, không phải bug code. Line2
+ * dùng shader riêng nên lineWidth có tác dụng thật, cross-platform.
+ */
 function OverlayLines({ layer }: { layer: OverlayLayer }) {
-  const geometry = useMemo(() => {
-    const positions: number[] = [];
-    for (const poly of layer.polylines) {
-      for (let i = 0; i < poly.length - 1; i++) {
-        const a = poly[i];
-        const b = poly[i + 1];
-        positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
-      }
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    return g;
-  }, [layer.polylines]);
-
+  const width = layer.lineWidth ?? 2;
   return (
-    <lineSegments geometry={geometry}>
-      <lineBasicMaterial color={layer.color} linewidth={1.5} />
-    </lineSegments>
+    <>
+      {layer.polylines.map((poly, i) => {
+        if (poly.length < 2) return null;
+        const points = poly.map((p) => [p.x, p.y, p.z] as [number, number, number]);
+        return (
+          <Line
+            key={i}
+            points={points}
+            color={layer.color}
+            lineWidth={width}
+          />
+        );
+      })}
+    </>
   );
 }

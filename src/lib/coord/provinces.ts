@@ -122,34 +122,52 @@ const CLIMATE_LABELS: Record<ClimateZone, string> = {
   NB:  'Nam Bộ',
 };
 
-/**
- * Tìm tỉnh chứa điểm (lat, lon).
- * Sử dụng bbox xấp xỉ; nếu nhiều tỉnh match, ưu tiên tỉnh có bbox nhỏ nhất.
- */
-export function findProvince(lat: number, lon: number): GeoInfo | null {
-  let best: Province | null = null;
-  let bestArea = Infinity;
-
-  for (const p of PROVINCES) {
-    const { minLat, maxLat, minLon, maxLon } = p.bbox;
-    if (lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon) {
-      const area = (maxLat - minLat) * (maxLon - minLon);
-      if (area < bestArea) {
-        best = p;
-        bestArea = area;
-      }
-    }
-  }
-
-  if (!best) return null;
+function toGeoInfo(p: Province, lat: number, lon: number): GeoInfo {
   return {
     lat,
     lon,
-    province: best.name,
-    climateZone: best.climateZone,
-    climateLabel: CLIMATE_LABELS[best.climateZone],
-    composedOf: best.composedOf,
+    province: p.name,
+    climateZone: p.climateZone,
+    climateLabel: CLIMATE_LABELS[p.climateZone],
+    composedOf: p.composedOf,
   };
+}
+
+/**
+ * Tìm tỉnh chứa điểm (lat, lon).
+ *
+ * Sử dụng bbox xấp xỉ; bbox các tỉnh lân cận (vd Lâm Đồng/Đồng Nai, Gia Lai/Bình Định cũ)
+ * chồng lấp nhau ở vùng biên. Khi nhiều tỉnh match:
+ *   1. Nếu có elevationHint (cao độ trung bình MSL của terrain) → ưu tiên tỉnh Tây Nguyên
+ *      (climateZone='TN', vùng cao) khi elevation > 500m, ưu tiên tỉnh KHÔNG phải Tây Nguyên
+ *      khi elevation < 200m — tránh chọn nhầm tỉnh đồng bằng cho terrain núi cao
+ *      (vd: trước đây luôn chọn "Đồng Nai" cho mọi điểm chồng lấp vì bbox Đồng Nai nhỏ hơn
+ *      Lâm Đồng, dù terrain rõ ràng là núi >1000m — sai hoàn toàn).
+ *   2. Nếu không có hint hoặc elevation không đủ để phân biệt → fallback bbox nhỏ nhất (cũ).
+ */
+export function findProvince(lat: number, lon: number, elevationHint?: number): GeoInfo | null {
+  const matches: Province[] = [];
+  for (const p of PROVINCES) {
+    const { minLat, maxLat, minLon, maxLon } = p.bbox;
+    if (lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon) matches.push(p);
+  }
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return toGeoInfo(matches[0], lat, lon);
+
+  let best = matches[0];
+  let bestScore = -Infinity;
+  for (const p of matches) {
+    const area = (p.bbox.maxLat - p.bbox.minLat) * (p.bbox.maxLon - p.bbox.minLon);
+    let score = -area; // baseline: bbox nhỏ hơn = score cao hơn (hành vi cũ)
+    if (elevationHint != null) {
+      const isHighland = p.climateZone === 'TN';
+      if (elevationHint > 500 && isHighland) score += 100;
+      if (elevationHint > 500 && !isHighland) score -= 100;
+      if (elevationHint < 200 && isHighland) score -= 100;
+    }
+    if (score > bestScore) { bestScore = score; best = p; }
+  }
+  return toGeoInfo(best, lat, lon);
 }
 
 /**

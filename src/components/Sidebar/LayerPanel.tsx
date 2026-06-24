@@ -14,6 +14,7 @@ export function LayerPanel() {
   const removeOverlayLayer = useSiteStore((s) => s.removeOverlayLayer);
   const toggleOverlayLayerVisible = useSiteStore((s) => s.toggleOverlayLayerVisible);
   const updateOverlayLayerColor = useSiteStore((s) => s.updateOverlayLayerColor);
+  const updateOverlayLayerWidth = useSiteStore((s) => s.updateOverlayLayerWidth);
   const renameOverlayLayer = useSiteStore((s) => s.renameOverlayLayer);
   const setTerrain = useSiteStore((s) => s.setTerrain);
   const setOverlayLayers = useSiteStore((s) => s.setOverlayLayers);
@@ -140,6 +141,7 @@ export function LayerPanel() {
               onToggleLayer={(id) => toggleOverlayLayerVisible(id)}
               onDeleteLayer={(id) => removeOverlayLayer(id)}
               onColorLayer={(id, c) => updateOverlayLayerColor(id, c)}
+              onWidthLayer={(id, w) => updateOverlayLayerWidth(id, w)}
               onRenameLayer={(id, n) => renameOverlayLayer(id, n)}
             />
           ))}
@@ -197,7 +199,7 @@ export function LayerPanel() {
 function FileGroup({
   fileId, layers,
   onToggleFile, onDeleteFile, onColorFile,
-  onToggleLayer, onDeleteLayer, onColorLayer, onRenameLayer,
+  onToggleLayer, onDeleteLayer, onColorLayer, onWidthLayer, onRenameLayer,
 }: {
   fileId: string;
   layers: OverlayLayer[];
@@ -207,6 +209,7 @@ function FileGroup({
   onToggleLayer: (id: string) => void;
   onDeleteLayer: (id: string) => void;
   onColorLayer: (id: string, c: string) => void;
+  onWidthLayer: (id: string, w: number) => void;
   onRenameLayer: (id: string, n: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -226,6 +229,7 @@ function FileGroup({
         onToggle={() => onToggleLayer(layers[0].id)}
         onDelete={() => onDeleteLayer(layers[0].id)}
         onColorChange={(c) => onColorLayer(layers[0].id, c)}
+        onWidthChange={(w) => onWidthLayer(layers[0].id, w)}
         onRename={(n) => onRenameLayer(layers[0].id, n)}
       />
     );
@@ -298,6 +302,7 @@ function FileGroup({
               onToggle={() => onToggleLayer(layer.id)}
               onDelete={() => onDeleteLayer(layer.id)}
               onColorChange={(c) => onColorLayer(layer.id, c)}
+              onWidthChange={(w) => onWidthLayer(layer.id, w)}
               onRename={(n) => onRenameLayer(layer.id, n)}
             />
           ))}
@@ -310,16 +315,18 @@ function FileGroup({
 // ── Layer row ────────────────────────────────────────────────────────────────
 
 function LayerRow({
-  layer, onToggle, onDelete, onColorChange, onRename,
+  layer, onToggle, onDelete, onColorChange, onWidthChange, onRename,
 }: {
   layer: OverlayLayer;
   onToggle: () => void;
   onDelete: () => void;
   onColorChange: (c: string) => void;
+  onWidthChange: (w: number) => void;
   onRename: (n: string) => void;
 }) {
   const isColorOverridden =
     layer.originalColor != null && layer.color !== layer.originalColor;
+  const width = layer.lineWidth ?? 2;
 
   return (
     <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-bg-card border border-white/5">
@@ -335,6 +342,15 @@ function LayerRow({
           className="w-0 h-0 opacity-0 absolute"
         />
       </label>
+
+      {/* Độ rộng nét vẽ */}
+      <input
+        type="range" min={0.5} max={10} step={0.5}
+        value={width}
+        onChange={(e) => onWidthChange(Number(e.target.value))}
+        title={`Độ rộng nét: ${width}px`}
+        className="w-10 h-1 accent-accent-teal flex-shrink-0"
+      />
 
       {/* Reset colour to original CAD colour */}
       {isColorOverridden && (

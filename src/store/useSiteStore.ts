@@ -181,6 +181,7 @@ interface State {
   removeOverlayLayer: (id: string) => void;
   toggleOverlayLayerVisible: (id: string) => void;
   updateOverlayLayerColor: (id: string, color: string) => void;
+  updateOverlayLayerWidth: (id: string, width: number) => void;
   renameOverlayLayer: (id: string, name: string) => void;
   setOverlayLayers: (layers: OverlayLayer[]) => void;
   /** Thủ công đánh dấu/bỏ đánh dấu layer là tree — sinh treePoints từ polylines/circles */
@@ -559,7 +560,7 @@ export const useSiteStore = create<State>((set, get) => ({
       const zone = detectVN2000Zone(cx, cy, { elevationHint: zMid });
       console.log('[VN2000] detected zone:', zone);
       if (zone) {
-        geo = findProvince(zone.lat, zone.lon);
+        geo = findProvince(zone.lat, zone.lon, zMid);
         console.log(
           '[Province]',
           zone.lat.toFixed(3) + '°N,',
@@ -738,6 +739,10 @@ export const useSiteStore = create<State>((set, get) => ({
   updateOverlayLayerColor: (id, color) =>
     set((s) => ({
       overlayLayers: s.overlayLayers.map((l) => (l.id === id ? { ...l, color } : l)),
+    })),
+  updateOverlayLayerWidth: (id, width) =>
+    set((s) => ({
+      overlayLayers: s.overlayLayers.map((l) => (l.id === id ? { ...l, lineWidth: Math.max(0.5, width) } : l)),
     })),
   renameOverlayLayer: (id, name) =>
     set((s) => ({

@@ -49,7 +49,7 @@ export function CollapsiblePanel({ id, number, title, color, defaultOpen = false
   }, [id]);
 
   return (
-    <div className="rounded-md overflow-hidden bg-bg-panel/40 mb-1">
+    <div className="rounded-md overflow-hidden border border-white/5 bg-bg-panel/40 mb-1">
       {/* ── Header ── */}
       <button
         onClick={toggle}

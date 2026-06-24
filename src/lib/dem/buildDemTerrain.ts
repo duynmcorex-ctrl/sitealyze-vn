@@ -28,7 +28,8 @@ const MIN_CELL_SIZE = 30;      // mét — giới hạn phân giải thật củ
 const MIN_GRID_DIM = 6;
 const BUFFER_RATIO = 0.15;     // mở rộng bbox thêm 15% mỗi chiều — vùng "ranh giới nghiên cứu"
 const BUFFER_MIN_M = 150;      // buffer tối thiểu (m) — đủ cho site nhỏ/ranh giới hẹp
-const UPSAMPLE_FACTOR = 3;     // nội suy mesh mượt hơn, không gọi thêm API (49×49 → 145×145)
+const UPSAMPLE_FACTOR = 5;     // nội suy mesh mượt hơn, không gọi thêm API (49×49 → 241×241)
+                                // factor cao hơn → biên ranh giới (mask cắt theo polygon) đỡ răng cưa hơn
 
 export interface BuildDemTerrainOptions {
   onProgress?: (message: string) => void;
@@ -245,7 +246,7 @@ export async function buildTerrainFromBoundary(
   };
 
   // Smoothing nhẹ — SRTM 30m thô, mượt hoá để terrain mesh đỡ răng cưa
-  heightmap = smoothHeightmap(heightmap, 2);
+  heightmap = smoothHeightmap(heightmap, 4);
 
   // ── 8. Ranh giới thật → boundaryCandidate (toạ độ cùng hệ heightmap.origin/bounds) ──
   // isLikelyBoundary=false → KHÔNG tự động clip, terrain mặc định hiện liền mạch.

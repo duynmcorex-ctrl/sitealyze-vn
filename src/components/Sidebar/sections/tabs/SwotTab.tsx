@@ -51,7 +51,7 @@ export function SwotTab() {
       {(Object.keys(SWOT_CONFIG) as SwotKey[]).map(key => {
         const cfg = SWOT_CONFIG[key];
         return (
-          <div key={key} className={`rounded-md border ${cfg.ring} ${cfg.bg} p-2`}>
+          <div key={key} className={`rounded-md ${cfg.bg} p-2`}>
             <div className="flex items-center gap-2 mb-1.5">
               <span className={`flex items-center justify-center w-6 h-6 rounded-full
                                 font-black text-[13px] border ${cfg.color} ${cfg.ring}

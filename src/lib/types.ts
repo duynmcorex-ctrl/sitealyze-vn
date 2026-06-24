@@ -106,6 +106,10 @@ export interface OverlayLayer {
   name: string;
   color: string;           // CSS hex, hiện tại (có thể bị ghi đè)
   originalColor?: string;  // màu gốc từ file CAD (để reset)
+  /** Độ rộng nét vẽ (px màn hình) — mặc định 2. Three.js LineBasicMaterial.linewidth
+   *  bị driver WebGL bỏ qua trên hầu hết platform (luôn 1px) nên dùng drei <Line> để
+   *  field này có tác dụng thật — xem OverlayLayerRenderer.tsx. */
+  lineWidth?: number;
   visible: boolean;
   /** Tự động tag là layer giao thông (regex GIAOTHONG, GT, DUONG …) */
   isRoad?: boolean;
