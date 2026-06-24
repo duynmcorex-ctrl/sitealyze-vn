@@ -97,10 +97,10 @@ export function TerrainTab() {
             const hasCands = boundaryCandidates.length > 0;
             const activeCand = selectedBoundaryIdx !== null ? boundaryCandidates[selectedBoundaryIdx] : null;
             const borderColor = isWedgy && !activeCand ? 'border-red-400/60' : 'border-amber-400/40';
-            const bgColor = isWedgy && !activeCand ? 'bg-red-500/10' : 'bg-amber-500/5';
+            const bgColor = isWedgy && !activeCand ? 'bg-red-500/5' : 'bg-amber-500/5';
 
             return (
-              <div className={`rounded border ${borderColor} ${bgColor} p-2`}>
+              <div className={`rounded-md border-l-2 ${borderColor} ${bgColor} pl-2.5 pr-1.5 py-2`}>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold
                                   text-amber-300">
@@ -190,7 +190,7 @@ export function TerrainTab() {
 
           {/* ── Độ mờ vùng mở rộng nghiên cứu (chỉ hiện với terrain dựng từ DEM Google Earth) ── */}
           {terrain?.heightmap.boundaryMask && (
-            <div className="rounded border border-cyan-400/30 bg-cyan-500/5 p-2">
+            <div className="rounded-md border-l-2 border-cyan-400/40 bg-cyan-500/5 pl-2.5 pr-1.5 py-2">
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <div className="text-[10px] uppercase tracking-wider font-bold text-cyan-300">
                   Vùng mở rộng nghiên cứu

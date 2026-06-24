@@ -11,7 +11,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { Plus, Eye, EyeOff, X, Save, FolderOpen, MapPin, Upload } from 'lucide-react';
+import { Plus, Eye, EyeOff, X, Save, FolderOpen, MapPin, Upload, Grid3x3 } from 'lucide-react';
 import { useSiteStore } from '../../../store/useSiteStore';
 import { FileUpload } from '../FileUpload';
 import { LayerPanel } from '../LayerPanel';
@@ -44,6 +44,8 @@ export function ProjectManagementSection() {
   const showBasemap     = useSiteStore(s => s.showBasemap);
   const demBufferSizeM    = useSiteStore(s => s.demBufferSizeM);
   const setDemBufferSizeM = useSiteStore(s => s.setDemBufferSizeM);
+  const showGrid          = useSiteStore(s => s.showGrid);
+  const toggleGrid        = useSiteStore(s => s.toggleGrid);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const kmlInputRef   = useRef<HTMLInputElement>(null);
@@ -170,6 +172,13 @@ export function ProjectManagementSection() {
             title={active.visible ? 'Ẩn project trong scene' : 'Hiện project trong scene'}
           >
             {active.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+          </button>
+          <button
+            onClick={toggleGrid}
+            className={`p-1 rounded transition ${showGrid ? 'text-accent-teal hover:bg-white/5' : 'text-slate-600 hover:text-slate-400'}`}
+            title={showGrid ? 'Ẩn lưới nền' : 'Hiện lưới nền'}
+          >
+            <Grid3x3 size={13} />
           </button>
         </div>
       )}

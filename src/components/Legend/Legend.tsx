@@ -51,14 +51,19 @@ export function Legend() {
   const elevColorMode = useSiteStore((s) => s.elevColorMode);
   if (!terrain || hide) return null;
 
+  // Neo theo dải cao độ GỐC (originalMinZ/Max) — khớp với TerrainMesh.tsx, để legend
+  // không đổi số khi user bật/tắt clip boundary (tránh lệch màu giữa các góc nhìn).
+  const zMin = terrain.heightmap.originalMinZ ?? terrain.heightmap.minZ;
+  const zMax = terrain.heightmap.originalMaxZ ?? terrain.heightmap.maxZ;
+
   let content: React.ReactNode = null;
   let title = '';
   switch (mode) {
     case 'elevation':
       title = 'Phân tích cao độ';
       content = elevColorMode === 'rainbow'
-        ? <RainbowElevationBar min={terrain.heightmap.minZ + baseMSL} max={terrain.heightmap.maxZ + baseMSL} />
-        : <ElevationSteps min={terrain.heightmap.minZ + baseMSL} max={terrain.heightmap.maxZ + baseMSL} />;
+        ? <RainbowElevationBar min={zMin + baseMSL} max={zMax + baseMSL} />
+        : <ElevationSteps min={zMin + baseMSL} max={zMax + baseMSL} />;
       break;
     case 'contour':
       title = 'Đường đồng mức';
@@ -70,7 +75,7 @@ export function Legend() {
             <span>Đường đồng mức</span>
           </div>
           <div className="text-[10px] text-slate-500 pt-0.5">
-            Dải cao độ: {terrain.heightmap.minZ.toFixed(1)} – {terrain.heightmap.maxZ.toFixed(1)} m
+            Dải cao độ: {zMin.toFixed(1)} – {zMax.toFixed(1)} m
           </div>
         </div>
       );

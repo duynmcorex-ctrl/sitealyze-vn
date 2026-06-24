@@ -55,9 +55,16 @@ export function TerrainMesh() {
       colors[i * 3 + 2] = c.b;
     };
 
+    // Neo màu theo dải cao độ GỐC (trước khi clip boundary), không phải dải đã clip.
+    // Lý do: applyBoundaryClip() recompute minZ/maxZ CHỈ trong vùng clip → cùng 1 điểm
+    // tuyệt đối sẽ đổi màu khi user bật/tắt "Ranh giới hiển thị", gây lệch màu giữa
+    // 2 góc nhìn của CÙNG 1 terrain. originalMinZ/Max giữ cố định dải gốc → màu nhất quán.
+    const zMin = hm.originalMinZ ?? hm.minZ;
+    const zMax = hm.originalMaxZ ?? hm.maxZ;
+
     // Terrain phẳng: chỉ coi là phẳng khi range < 0.1m (gần như 0)
     // Trước đây 0.5m làm files có chênh 1–5m thành màu xám đơn — sai
-    const isFlat = Math.abs(hm.maxZ - hm.minZ) < 0.1;
+    const isFlat = Math.abs(zMax - zMin) < 0.1;
 
     // Helper: tô màu mesh theo bảng màu cao độ — dùng cho cả mode 'elevation' và 'contour'
     const applyElevationPalette = () => {
@@ -66,19 +73,19 @@ export function TerrainMesh() {
         return;
       }
       if (elevColorMode === 'rainbow') {
-        const range = Math.max(1e-6, hm.maxZ - hm.minZ);
+        const range = Math.max(1e-6, zMax - zMin);
         for (let i = 0; i < n; i++) {
-          const t = (hm.data[i] - hm.minZ) / range;
+          const t = (hm.data[i] - zMin) / range;
           rainbowElevColor(t, c);
           colors[i * 3]     = c.r;
           colors[i * 3 + 1] = c.g;
           colors[i * 3 + 2] = c.b;
         }
       } else {
-        const range = hm.maxZ - hm.minZ;
+        const range = zMax - zMin;
         const palette = range < SMALL_RANGE_THRESHOLD_M ? ELEV_PALETTE_SMALL_RGB : ELEV_PALETTE_RGB;
         for (let i = 0; i < n; i++) {
-          const idx = elevPaletteIndex(hm.data[i], hm.minZ, hm.maxZ);
+          const idx = elevPaletteIndex(hm.data[i], zMin, zMax);
           const [r, g, b] = palette[idx];
           colors[i * 3]     = r;
           colors[i * 3 + 1] = g;
@@ -95,7 +102,7 @@ export function TerrainMesh() {
     } else if (mode === 'wind') {
       // Wind: gradient mịn để particle nổi bật
       for (let i = 0; i < n; i++) {
-        const t = (hm.data[i] - hm.minZ) / Math.max(1e-6, hm.maxZ - hm.minZ);
+        const t = (hm.data[i] - zMin) / Math.max(1e-6, zMax - zMin);
         c.setHSL(0.6 - t * 0.55, 0.55, 0.28 + t * 0.22);
         colors[i * 3] = c.r;
         colors[i * 3 + 1] = c.g;
@@ -128,7 +135,7 @@ export function TerrainMesh() {
         if (analysis.features.ridges[i]) setColor(i, '#fb923c');
         else if (analysis.features.valleys[i]) setColor(i, '#3b82f6');
         else {
-          const t = (hm.data[i] - hm.minZ) / Math.max(1e-6, hm.maxZ - hm.minZ);
+          const t = (hm.data[i] - zMin) / Math.max(1e-6, zMax - zMin);
           c.setHSL(0.1, 0.05, 0.3 + t * 0.3);
           colors[i * 3] = c.r;
           colors[i * 3 + 1] = c.g;
@@ -139,7 +146,7 @@ export function TerrainMesh() {
       for (let i = 0; i < n; i++) setColor(i, '#cbd5e1');
     } else if (mode === 'viewshed' && analysis.viewshed) {
       for (let i = 0; i < n; i++) {
-        const t = (hm.data[i] - hm.minZ) / Math.max(1e-6, hm.maxZ - hm.minZ);
+        const t = (hm.data[i] - zMin) / Math.max(1e-6, zMax - zMin);
         if (analysis.viewshed[i]) {
           c.setRGB(0.4 + t * 0.4, 0.85, 0.5);
         } else {
@@ -151,7 +158,7 @@ export function TerrainMesh() {
       }
     } else {
       for (let i = 0; i < n; i++) {
-        const t = (hm.data[i] - hm.minZ) / Math.max(1e-6, hm.maxZ - hm.minZ);
+        const t = (hm.data[i] - zMin) / Math.max(1e-6, zMax - zMin);
         c.setHSL(0.6 - t * 0.55, 0.7, 0.4);
         colors[i * 3] = c.r;
         colors[i * 3 + 1] = c.g;

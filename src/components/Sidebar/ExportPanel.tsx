@@ -1,11 +1,14 @@
-import { Download, FileJson } from 'lucide-react';
+import { Download, FileJson, Image as ImageIcon } from 'lucide-react';
+import { useState } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
+import { highResCaptureRef } from '../../lib/render/highResCapture';
 
 export function ExportPanel() {
   const terrain = useSiteStore((s) => s.terrain);
   const mode = useSiteStore((s) => s.mode);
   const env = useSiteStore((s) => s.env);
   const analysis = useSiteStore((s) => s.analysis);
+  const [capturing, setCapturing] = useState(false);
 
   const exportPng = () => {
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
@@ -15,6 +18,18 @@ export function ExportPanel() {
     a.href = url;
     a.download = `sitealyze-${mode}-${Date.now()}.png`;
     a.click();
+  };
+
+  // Xuất ảnh 4K (3840×2160) cho slide thuyết trình — render off-screen ở resolution
+  // cao hơn viewport, không ảnh hưởng hiển thị hiện tại. Xem Canvas3D.tsx (HighResCaptureBridge).
+  const export4k = () => {
+    if (!highResCaptureRef.current) return;
+    setCapturing(true);
+    // requestAnimationFrame để UI (label "Đang chụp…") kịp render trước khi block 1 frame
+    requestAnimationFrame(() => {
+      highResCaptureRef.current?.(3840, 2160, `sitealyze-${mode}-4k-${Date.now()}.png`);
+      setCapturing(false);
+    });
   };
 
   const exportJson = () => {
@@ -58,7 +73,15 @@ export function ExportPanel() {
         className="w-full py-2 rounded-md text-xs font-bold uppercase tracking-wider
                    bg-bg-card hover:bg-white/10 disabled:opacity-40 text-slate-300
                    flex items-center justify-center gap-2">
-        <Download size={14} /> Ảnh PNG
+        <Download size={14} /> Ảnh PNG (viewport hiện tại)
+      </button>
+      <button onClick={export4k} disabled={!terrain || capturing}
+        title="Xuất ảnh 3840×2160 — chất lượng cao để chèn vào slide thuyết trình"
+        className="w-full py-2 rounded-md text-xs font-bold uppercase tracking-wider
+                   bg-accent-teal/15 border border-accent-teal/40 hover:bg-accent-teal/25
+                   disabled:opacity-40 text-accent-teal
+                   flex items-center justify-center gap-2">
+        <ImageIcon size={14} /> {capturing ? 'Đang chụp…' : 'Ảnh 4K (cho slide)'}
       </button>
       <button onClick={exportJson} disabled={!terrain}
         className="w-full py-2 rounded-md text-xs font-bold uppercase tracking-wider

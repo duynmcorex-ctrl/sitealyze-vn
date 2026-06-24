@@ -49,7 +49,7 @@ export function CollapsiblePanel({ id, number, title, color, defaultOpen = false
   }, [id]);
 
   return (
-    <div className="rounded-md overflow-hidden border border-white/8 bg-bg-panel/60 mb-1.5">
+    <div className="rounded-md overflow-hidden bg-bg-panel/40 mb-1">
       {/* ── Header ── */}
       <button
         onClick={toggle}
@@ -88,7 +88,7 @@ export function CollapsiblePanel({ id, number, title, color, defaultOpen = false
 
       {/* ── Content ── */}
       {open && (
-        <div className="px-3 py-2.5 border-t border-white/5">
+        <div className="px-3 py-2.5">
           {children}
         </div>
       )}

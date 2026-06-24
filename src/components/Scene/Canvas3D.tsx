@@ -1,6 +1,8 @@
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
+import * as THREE from 'three';
+import { highResCaptureRef } from '../../lib/render/highResCapture';
 import { TerrainMesh } from './TerrainMesh';
 import { TerrainMeshBg } from './TerrainMeshBg';
 import { ContourLines } from './ContourLines';
@@ -36,6 +38,45 @@ function AzimuthSync() {
     const azimuth = Math.atan2(camera.position.x, camera.position.z);
     setCameraAzimuth(azimuth);
   });
+  return null;
+}
+
+/**
+ * HighResCaptureBridge: gán hàm chụp ảnh độ phân giải cao (4K) vào highResCaptureRef
+ * để UI ngoài Canvas (ExportPanel) gọi được. Render 1 frame ở resolution target rồi
+ * trả renderer về kích thước viewport cũ — không ảnh hưởng hiển thị on-screen.
+ */
+function HighResCaptureBridge() {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    highResCaptureRef.current = (width, height, filename) => {
+      const prevSize = new THREE.Vector2();
+      gl.getSize(prevSize);
+      const prevPixelRatio = gl.getPixelRatio();
+      const cam = camera as THREE.PerspectiveCamera;
+      const prevAspect = cam.aspect;
+
+      gl.setPixelRatio(1);
+      gl.setSize(width, height, false);
+      cam.aspect = width / height;
+      cam.updateProjectionMatrix();
+      gl.render(scene, camera);
+      const url = gl.domElement.toDataURL('image/png');
+
+      // Trả về kích thước/aspect cũ ngay lập tức (đồng bộ, không có frame hiển thị giữa)
+      gl.setPixelRatio(prevPixelRatio);
+      gl.setSize(prevSize.x, prevSize.y, false);
+      cam.aspect = prevAspect;
+      cam.updateProjectionMatrix();
+      gl.render(scene, camera);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+    };
+    return () => { highResCaptureRef.current = null; };
+  }, [gl, scene, camera]);
   return null;
 }
 
@@ -151,6 +192,7 @@ export function Canvas3D() {
         )}
       </Suspense>
       <AzimuthSync />
+      <HighResCaptureBridge />
       <AutoFit />
       <CameraPreset />
       <SceneCapturer />
