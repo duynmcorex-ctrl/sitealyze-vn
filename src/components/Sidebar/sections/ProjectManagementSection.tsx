@@ -11,14 +11,14 @@
  */
 
 import { useRef, useState } from 'react';
-import { Plus, Eye, EyeOff, X, Save, FolderOpen, MapPin, Upload, Grid3x3, FileBox } from 'lucide-react';
+import { Plus, Eye, EyeOff, X, Save, FolderOpen, MapPin, Upload, Grid3x3 } from 'lucide-react';
 import { useSiteStore } from '../../../store/useSiteStore';
 import { FileUpload } from '../FileUpload';
 import { LayerPanel } from '../LayerPanel';
 import { ScenesPanel } from '../ScenesPanel';
 import { saveProject, loadProject } from '../../../lib/project/saveLoad';
 import { parseBoundaryFile } from '../../../lib/coord/parseKml';
-import { buildTerrainFromBoundary, buildTerrainFromDxfBoundary } from '../../../lib/dem/buildDemTerrain';
+import { buildTerrainFromBoundary } from '../../../lib/dem/buildDemTerrain';
 
 export function ProjectManagementSection() {
   const projects        = useSiteStore(s => s.projects);
@@ -49,9 +49,7 @@ export function ProjectManagementSection() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const kmlInputRef   = useRef<HTMLInputElement>(null);
-  const dxfBoundaryRef = useRef<HTMLInputElement>(null);
   const [genBusy, setGenBusy] = useState(false);
-  const [genMsg, setGenMsg] = useState<string | null>(null);
 
   const active = projects.find(p => p.id === activeProjectId);
 
@@ -72,30 +70,6 @@ export function ProjectManagementSection() {
     } finally {
       setGenBusy(false);
       setLoading(false);
-    }
-  };
-
-  /** Build terrain TRỰC TIẾP từ ranh giới trong file DXF — đảm bảo khớp 100% với DXF
-   *  khảo sát thật (không qua KML trung gian dễ lệch vài trăm m do vẽ tay/đơn giản hoá). */
-  const handleDxfBoundary = async (file: File) => {
-    setGenBusy(true);
-    setLoading(true);
-    setError(null);
-    setGenMsg(null);
-    try {
-      const text = await file.text();
-      const terrain = await buildTerrainFromDxfBoundary(text, {
-        bufferOverrideM: demBufferSizeM,
-        onProgress: (msg) => setGenMsg(msg),
-      });
-      setTerrain(terrain);
-      computeForMode(mode);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lỗi không xác định khi đọc ranh giới DXF.');
-    } finally {
-      setGenBusy(false);
-      setLoading(false);
-      setGenMsg(null);
     }
   };
 
@@ -242,16 +216,6 @@ export function ProjectManagementSection() {
             <MapPin size={11} /> Vẽ ranh giới trên bản đồ
           </button>
         </div>
-        <button
-          onClick={() => dxfBoundaryRef.current?.click()}
-          disabled={genBusy}
-          className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md
-                     bg-cyan-500/10 border border-cyan-400/40 text-cyan-300
-                     hover:bg-cyan-500/20 transition text-[10.5px] font-bold disabled:opacity-40"
-          title="Lấy ranh giới TRỰC TIẾP từ file DXF khảo sát (toạ độ VN2000 local) — đảm bảo terrain khớp 100% với ranh giới thật, không qua KML trung gian dễ lệch vài trăm m"
-        >
-          <FileBox size={11} /> {genBusy && genMsg ? genMsg : 'Tải ranh giới từ DXF (khớp chính xác)'}
-        </button>
         <input
           ref={kmlInputRef}
           type="file"
@@ -260,17 +224,6 @@ export function ProjectManagementSection() {
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) handleKmlBoundary(f);
-            e.target.value = '';
-          }}
-        />
-        <input
-          ref={dxfBoundaryRef}
-          type="file"
-          accept=".dxf,.DXF"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleDxfBoundary(f);
             e.target.value = '';
           }}
         />

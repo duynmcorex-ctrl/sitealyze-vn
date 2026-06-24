@@ -17,8 +17,7 @@
  *   8. Trả về TerrainData — tương thích nguyên vẹn pipeline phân tích hiện có
  */
 
-import { latLonToVN2000, vn2000ToLatLon, pickMeridianForLatLon, detectVN2000Zone } from '../coord/vn2000';
-import { extractDxfBoundaryLocal } from '../dxf/parseDxfBoundary';
+import { latLonToVN2000, vn2000ToLatLon, pickMeridianForLatLon } from '../coord/vn2000';
 import { fetchElevations } from './fetchDem';
 import { buildMeshFromHeightmap } from '../terrain/buildMesh';
 import { smoothHeightmap } from '../terrain/heightmap';
@@ -285,40 +284,4 @@ export async function buildTerrainFromBoundary(
   };
 
   return terrain;
-}
-
-/**
- * Build terrain DEM TRỰC TIẾP từ ranh giới DXF (toạ độ VN2000 local, KHÔNG qua KML
- * trung gian) — đảm bảo terrain và ranh giới hiển thị khớp 100% vì cùng 1 nguồn polygon,
- * khác với việc build từ KML rồi overlay DXF riêng (2 nguồn khác nhau → luôn lệch vài
- * trăm mét do KML thường đơn giản hoá/vẽ tay so với khảo sát CAD chính xác).
- *
- * Pipeline: trích polygon ranh giới lớn nhất trong DXF (toạ độ local) → detect zone
- * VN2000 (theo PROVINCE_BBOXES + local zone) → convert sang lat/lon → tái dùng
- * buildTerrainFromBoundary() y hệt luồng KML/vẽ tay.
- */
-export async function buildTerrainFromDxfBoundary(
-  dxfText: string,
-  opts: BuildDemTerrainOptions = {},
-): Promise<TerrainData> {
-  const localPts = extractDxfBoundaryLocal(dxfText);
-  if (!localPts || localPts.length < 3) {
-    throw new Error('Không tìm thấy polygon ranh giới trong file DXF (cần polyline khép kín ≥3 điểm).');
-  }
-
-  const cx = localPts.reduce((s, p) => s + p.x, 0) / localPts.length;
-  const cy = localPts.reduce((s, p) => s + p.y, 0) / localPts.length;
-
-  const zone = detectVN2000Zone(cx, cy);
-  if (!zone) {
-    throw new Error(
-      'Không xác định được hệ toạ độ VN2000 của file DXF này. ' +
-      'Toạ độ tâm: ' + cx.toFixed(0) + ', ' + cy.toFixed(0) + ' — có thể file dùng toạ độ local (không phải VN2000 thật).',
-    );
-  }
-
-  const boundaryLatLon = localPts.map((p) => vn2000ToLatLon(p.x, p.y, { centralMeridian: zone.centralMeridian, k0: zone.k0 }));
-  opts.onProgress?.(`Đã nhận diện ranh giới DXF tại ${zone.matchedProvince ?? 'VN'} (${zone.label})…`);
-
-  return buildTerrainFromBoundary(boundaryLatLon, opts);
 }
