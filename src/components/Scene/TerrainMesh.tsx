@@ -144,6 +144,11 @@ export function TerrainMesh() {
       }
     } else if (mode === 'sun') {
       for (let i = 0; i < n; i++) setColor(i, '#cbd5e1');
+    } else if (mode === 'sunExposure' && analysis.sunExposure) {
+      const SUN_CLASS_COLOR = ['#3b4a6b', '#fbbf24', '#f97316']; // 0=không nắng, 1=vừa, 2=nhiều
+      for (let i = 0; i < n; i++) {
+        setColor(i, SUN_CLASS_COLOR[analysis.sunExposure.classes[i]] ?? '#888');
+      }
     } else if (mode === 'viewshed' && analysis.viewshed) {
       for (let i = 0; i < n; i++) {
         const t = (hm.data[i] - zMin) / Math.max(1e-6, zMax - zMin);

@@ -9,6 +9,7 @@ import { computeSlope } from '../lib/analysis/slope';
 import { computeHydrology } from '../lib/analysis/hydrology';
 import { detectFeatures } from '../lib/analysis/features';
 import { computeSuitability } from '../lib/analysis/suitability';
+import { computeSunExposure } from '../lib/analysis/sunExposure';
 import { computeMCA, DEFAULT_MCA_WEIGHTS } from '../lib/analysis/mca';
 import { computeContourLines } from '../lib/analysis/contours';
 import { computeViewshed } from '../lib/analysis/viewshed';
@@ -87,6 +88,9 @@ interface AnalysisCache {
   arrowDensity?: number;
   viewshed?: Uint8Array;
   viewshedAt?: { x: number; z: number };
+  sunExposure?: import('../lib/analysis/sunExposure').SunExposureData;
+  /** Tham số đã dùng để tính sunExposure — invalidate cache khi đổi tháng/vĩ độ/north */
+  sunExposureKey?: string;
 }
 
 interface State {
@@ -248,6 +252,17 @@ interface State {
    *  Setting trước khi generate — dùng chung cho upload KML và vẽ tay trên bản đồ. */
   demBufferSizeM: number;
   setDemBufferSizeM: (v: number) => void;
+
+  // ── Sun (mục Điều kiện tự nhiên > Nắng) ────────────────────────────────────
+  /** Ẩn quả cầu/quầng sáng/tia nắng (chỉ giữ light+shadow) — đỡ rối khi xem tương quan sáng/tối */
+  sunHideBall: boolean;
+  toggleSunHideBall: () => void;
+  /** Độ sáng trực tiếp (directionalLight intensity) — SketchUp-style "Light" slider */
+  sunLightIntensity: number;
+  setSunLightIntensity: (v: number) => void;
+  /** Độ tối vùng bóng đổ (ambientLight intensity, thấp hơn = bóng tối hơn) — "Dark" slider */
+  sunDarkIntensity: number;
+  setSunDarkIntensity: (v: number) => void;
 
   // ── Per-type massing override (Mục 3 PlanningSection) ─────────────────────
   /** Override MĐXD/Tầng cho từng LanduseType — áp cho TẤT CẢ parcel cùng type
@@ -413,6 +428,13 @@ export const useSiteStore = create<State>((set, get) => ({
   setDemBufferDim: (v) => set({ demBufferDim: Math.min(1, Math.max(0, v)) }),
   demBufferSizeM: 200,
   setDemBufferSizeM: (v) => set({ demBufferSizeM: Math.max(0, v) }),
+
+  sunHideBall: false,
+  toggleSunHideBall: () => set((s) => ({ sunHideBall: !s.sunHideBall })),
+  sunLightIntensity: 1.6,
+  setSunLightIntensity: (v) => set({ sunLightIntensity: Math.max(0, Math.min(3, v)) }),
+  sunDarkIntensity: 0.25,
+  setSunDarkIntensity: (v) => set({ sunDarkIntensity: Math.max(0, Math.min(1, v)) }),
   setSelectedBoundaryIdx: (i) => {
     set({ selectedBoundaryIdx: i });
     const t = get().terrain;
@@ -1077,6 +1099,14 @@ export const useSiteStore = create<State>((set, get) => ({
           );
         }
         break;
+      case 'sunExposure': {
+        const key = `${env.month}|${env.latitude.toFixed(2)}|${env.northRotation.toFixed(1)}`;
+        if (!a.sunExposure || a.sunExposureKey !== key) {
+          a.sunExposure = computeSunExposure(t.heightmap, env.latitude, env.month, env.northRotation);
+          a.sunExposureKey = key;
+        }
+        break;
+      }
       case 'roads':
         // Roads data đã có sẵn trong overlayLayers, chỉ cần auto-bật showRoads
         if (!get().showRoads) set({ showRoads: true });

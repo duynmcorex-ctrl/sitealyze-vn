@@ -87,6 +87,7 @@ export function Legend() {
   const showAllPeaks = useSiteStore((s) => s.showAllPeakElevations);
   const toggleAllPeaks = useSiteStore((s) => s.toggleAllPeakElevations);
   const elevColorMode = useSiteStore((s) => s.elevColorMode);
+  const analysis = useSiteStore((s) => s.analysis);
   if (!terrain || hide) return null;
 
   // Neo theo dải cao độ GỐC (originalMinZ/Max) — khớp với TerrainMesh.tsx, để legend
@@ -208,6 +209,26 @@ export function Legend() {
       title = 'Phân tích bóng đổ';
       content = <div className="text-xs text-slate-400">Dùng tham số tháng + giờ + vĩ độ.</div>;
       break;
+    case 'sunExposure': {
+      const se = analysis.sunExposure;
+      title = 'Phân vùng nắng theo giờ';
+      content = se ? (
+        <div className="space-y-1.5">
+          <Swatches items={[
+            { color: '#f97316', label: `Nắng nhiều (≥70% ngày) · ${se.classArea.high.toFixed(0)}%` },
+            { color: '#fbbf24', label: `Nắng vừa (30-70% ngày) · ${se.classArea.medium.toFixed(0)}%` },
+            { color: '#3b4a6b', label: `Ít/không nắng (<30% ngày) · ${se.classArea.low.toFixed(0)}%` },
+          ]} />
+          <div className="text-[10px] text-slate-500 pt-1 leading-snug">
+            Trung bình {se.meanHours.toFixed(1)}h nắng/{se.maxPossibleHours}h ngày
+            (sample {se.sampledHours.join('h, ')}h). Đã tính bóng đổ địa hình.
+          </div>
+        </div>
+      ) : (
+        <div className="text-xs text-slate-400">Đang tính… (lần đầu có thể mất vài giây)</div>
+      );
+      break;
+    }
     case 'wind':
       title = 'Mô phỏng gió';
       content = <WindLegend />;

@@ -6,6 +6,9 @@ import { computeSunPosition } from '../../lib/analysis/sun';
 export function SunLight() {
   const env = useSiteStore((s) => s.env);
   const terrain = useSiteStore((s) => s.terrain);
+  const sunHideBall = useSiteStore((s) => s.sunHideBall);
+  const lightIntensity = useSiteStore((s) => s.sunLightIntensity);
+  const darkIntensity = useSiteStore((s) => s.sunDarkIntensity);
 
   // SunLight nằm BÊN TRONG group đã rotate -northRotation quanh Y.
   // Để sun vector đúng hướng thực tế, bù ngược lại: truyền -northRotation.
@@ -50,7 +53,7 @@ export function SunLight() {
     <>
       <directionalLight
         position={sunPos}
-        intensity={isDay ? 1.6 : 0.05}
+        intensity={isDay ? lightIntensity : 0.05}
         color={isDay ? '#fff5d6' : '#5b6b8c'}
         castShadow
         shadow-mapSize-width={2048}
@@ -62,8 +65,8 @@ export function SunLight() {
         shadow-camera-top={sz}
         shadow-camera-bottom={-sz}
       />
-      <ambientLight intensity={isDay ? 0.25 : 0.15} color="#9ec5ff" />
-      {isDay && (
+      <ambientLight intensity={isDay ? darkIntensity : 0.15} color="#9ec5ff" />
+      {isDay && !sunHideBall && (
         <>
           {/* Mặt trời (quả cầu) */}
           <mesh position={sunPos}>

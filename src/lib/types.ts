@@ -250,7 +250,8 @@ export type AnalysisMode =
   | 'wind'
   | 'viewshed'
   | 'roads'
-  | 'landuse';
+  | 'landuse'
+  | 'sunExposure';
 
 // ── Multi-Criteria Analysis (MCA) ─────────────────────────────────────────
 // Phương pháp đánh giá quỹ đất xây dựng theo nghiên cứu KTS HN 2026:

@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Cloud, Sun, Wind } from 'lucide-react';
+import { Cloud, Sun, Wind, EyeOff, Eye, Sparkles } from 'lucide-react';
 import { useSiteStore } from '../../../../store/useSiteStore';
 import { SubTabsHorizontal } from '../../SubTabsHorizontal';
 import { ClimatePanel } from '../../ClimatePanel';
@@ -22,6 +22,15 @@ export function NaturalCondTab() {
   const env     = useSiteStore(s => s.env);
   const setEnv  = useSiteStore(s => s.setEnv);
   const setMode = useSiteStore(s => s.setMode);
+  const mode    = useSiteStore(s => s.mode);
+  const computeForMode = useSiteStore(s => s.computeForMode);
+  const sunExposure = useSiteStore(s => s.analysis.sunExposure);
+  const sunHideBall = useSiteStore(s => s.sunHideBall);
+  const toggleSunHideBall = useSiteStore(s => s.toggleSunHideBall);
+  const sunLightIntensity = useSiteStore(s => s.sunLightIntensity);
+  const setSunLightIntensity = useSiteStore(s => s.setSunLightIntensity);
+  const sunDarkIntensity = useSiteStore(s => s.sunDarkIntensity);
+  const setSunDarkIntensity = useSiteStore(s => s.setSunDarkIntensity);
 
   // Auto-set 3D mode theo tab con
   useEffect(() => {
@@ -57,6 +66,66 @@ export function NaturalCondTab() {
           <div className="text-[10px] text-slate-500 italic leading-relaxed">
             Bóng đổ và vị trí mặt trời tự động cập nhật theo tham số trên 3D scene.
           </div>
+
+          {/* Ẩn mặt trời + độ sáng/tối (kiểu SketchUp Shadows) */}
+          <div className="pt-2 border-t border-white/5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9.5px] uppercase tracking-wider text-slate-500 font-bold">
+                Hiển thị
+              </span>
+              <button
+                onClick={toggleSunHideBall}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border transition
+                  ${sunHideBall ? 'border-amber-400/40 text-amber-300 bg-amber-500/10' : 'border-white/10 text-slate-400 hover:text-slate-200'}`}
+                title="Ẩn quả cầu/quầng sáng/tia nắng — chỉ giữ bóng đổ thực để dễ quan sát tương quan sáng/tối"
+              >
+                {sunHideBall ? <EyeOff size={11} /> : <Eye size={11} />}
+                {sunHideBall ? 'Đã ẩn mặt trời' : 'Ẩn mặt trời'}
+              </button>
+            </div>
+            <Slider label="Light" value={Math.round(sunLightIntensity * 100)} min={0} max={300} step={5} suffix="%"
+              onChange={(v) => setSunLightIntensity(v / 100)} />
+            <Slider label="Dark" value={Math.round(sunDarkIntensity * 100)} min={0} max={100} step={5} suffix="%"
+              onChange={(v) => setSunDarkIntensity(v / 100)} />
+            <div className="text-[9px] text-slate-500 italic leading-snug">
+              Light = độ sáng vùng có nắng · Dark = độ sáng vùng bóng đổ (kéo về 0% để bóng tối hẳn,
+              dễ thấy tương quan sáng/tối nhất).
+            </div>
+          </div>
+
+          {/* Phân vùng nắng theo giờ trong ngày */}
+          <div className="pt-2 border-t border-white/5 space-y-1.5">
+            <button
+              onClick={() => { setMode('sunExposure'); computeForMode('sunExposure'); }}
+              className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10.5px]
+                font-bold uppercase tracking-wider border transition
+                ${mode === 'sunExposure'
+                  ? 'bg-orange-500/20 border-orange-400/60 text-orange-300'
+                  : 'border-orange-400/30 text-orange-300/80 hover:bg-orange-500/10'}`}
+            >
+              <Sparkles size={12} /> Phân tích nắng theo giờ (tháng {env.month})
+            </button>
+            {mode === 'sunExposure' && sunExposure && (
+              <div className="px-2 py-1.5 rounded bg-orange-500/5 border-l-2 border-orange-400/40 text-[10px] text-slate-300 leading-relaxed space-y-1">
+                <div>
+                  🔶 <b className="text-orange-300">{sunExposure.classArea.high.toFixed(0)}%</b> diện tích nắng nhiều
+                  (≥70% ngày, trung bình ngày dài {sunExposure.maxPossibleHours}h)
+                </div>
+                <div>
+                  🟡 <b className="text-amber-300">{sunExposure.classArea.medium.toFixed(0)}%</b> nắng vừa (30-70%)
+                </div>
+                <div>
+                  🔵 <b className="text-slate-300">{sunExposure.classArea.low.toFixed(0)}%</b> ít/không nắng (&lt;30%)
+                  — phù hợp công trình cần che nắng/kho/kỹ thuật
+                </div>
+                <div className="text-slate-500 pt-0.5">
+                  Trung bình toàn khu: {sunExposure.meanHours.toFixed(1)}h nắng/ngày.
+                  Đã tính bóng đổ địa hình (sườn khuất nắng tự động nhận diện ít nắng hơn).
+                </div>
+              </div>
+            )}
+          </div>
+
           <ModeCommentsBlock mode="sun" />
         </div>
       )}
