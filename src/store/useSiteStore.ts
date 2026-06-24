@@ -133,6 +133,9 @@ interface State {
   toggleRoads: () => void;
   /** Override tỉnh thủ công (khi auto-detect VN2000 fail) */
   setGeoOverride: (provinceName: string | null) => void;
+  /** Set geo TRỰC TIẾP từ toạ độ thật đã biết (vd parse từ KML/KMZ) — không suy ra
+   *  từ tâm bbox tỉnh như setGeoOverride, giữ đúng lat/lon thật của vị trí. */
+  setGeoExact: (geo: import('../lib/coord/provinces').GeoInfo | null) => void;
 
   /** Hiện/ẩn panel bản đồ 2D (ESRI + OSM) */
   showBasemap: boolean;
@@ -837,8 +840,11 @@ export const useSiteStore = create<State>((set, get) => ({
 
   setGeoOverride: (provinceName) => {
     const newGeo = provinceName ? makeGeoFromProvinceName(provinceName) : null;
+    get().setGeoExact(newGeo);
+  },
+  setGeoExact: (newGeo) => {
     set((s) => {
-      // Cập nhật lat + gió khí hậu theo tỉnh đã chọn + tháng hiện tại
+      // Cập nhật lat + gió khí hậu theo vị trí đã biết + tháng hiện tại
       const envPatch: Partial<EnvParams> = newGeo
         ? buildClimateEnvPatch(newGeo, s.env.month)
         : {};

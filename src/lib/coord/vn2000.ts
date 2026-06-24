@@ -164,19 +164,29 @@ export function latLonToVN2000(
 /**
  * Chọn kinh tuyến trục phù hợp nhất cho một điểm (lat, lon) — dùng khi
  * xây ranh giới từ Google Earth (lat/lon thật, không có gợi ý từ file CAD).
- * Ưu tiên: tỉnh match trong PROVINCE_BBOXES > kinh tuyến gần lon nhất.
+ *
+ * QUAN TRỌNG: ưu tiên zone ĐỊA PHƯƠNG CHÍNH THỨC của tỉnh (PROVINCE_BBOXES.localZone)
+ * nếu match — KHÔNG chọn "kinh tuyến gần lon nhất" theo khoảng cách thô. Lý do: với các
+ * tỉnh có hồ sơ trắc địa dùng zone riêng (vd Lâm Đồng dùng 107°45', không phải 108°30'
+ * dù 108°30' gần hơn theo khoảng cách kinh độ thô) — nếu chọn sai zone, khi user sau đó
+ * ghép layer DXF khảo sát thật (dùng đúng zone địa phương) lên terrain dựng từ GGE, toạ độ
+ * 2 nguồn sẽ LỆCH NHAU dù cùng đại diện 1 vị trí thật — vì là 2 phép chiếu khác nhau.
+ * Dùng đúng zone địa phương đã biết giúp terrain GGE và file khảo sát CAD cùng tỉnh khớp
+ * toạ độ với nhau mà không cần thêm bước hiệu chỉnh.
  */
 export function pickMeridianForLatLon(lat: number, lon: number): VN2000Options {
   const province = PROVINCE_BBOXES.find(p =>
     lat >= p.minLat && lat <= p.maxLat && lon >= p.minLon && lon <= p.maxLon,
   );
+  if (province?.localZone) {
+    return { centralMeridian: province.localZone.meridian, k0: province.localZone.k0 };
+  }
   let best = CANDIDATE_MERIDIANS[0];
   let bestDist = Infinity;
   for (const c of CANDIDATE_MERIDIANS) {
     const dist = Math.abs(lon - c.meridian);
     if (dist < bestDist) { bestDist = dist; best = c; }
   }
-  void province; // (reserved cho fine-tune theo tỉnh trong tương lai)
   return { centralMeridian: best.meridian, k0: best.k0 };
 }
 
@@ -216,9 +226,13 @@ const PROVINCE_BBOXES: Array<{
   minLat: number; maxLat: number; minLon: number; maxLon: number;
   /** true = vùng cao (Tây Nguyên + miền núi), Z MSL > 500m điển hình */
   highland?: boolean;
+  /** Zone địa phương CHÍNH THỨC dùng cho khảo sát địa chính tỉnh này (nếu có) —
+   *  ưu tiên tuyệt đối khi forward-project lat/lon → VN2000 cho tỉnh này. */
+  localZone?: { meridian: number; k0: number };
 }> = [
   // Vùng cao (Tây Nguyên + miền núi)
-  { name: 'Lâm Đồng',   minLat: 10.3, maxLat: 12.8, minLon: 107.2, maxLon: 108.9, highland: true },
+  { name: 'Lâm Đồng',   minLat: 10.3, maxLat: 12.8, minLon: 107.2, maxLon: 108.9, highland: true,
+    localZone: { meridian: 107.75, k0: 0.9999 } },
   { name: 'Đắk Lắk',    minLat: 11.8, maxLat: 13.7, minLon: 107.5, maxLon: 109.6, highland: true },
   { name: 'Gia Lai',    minLat: 12.8, maxLat: 14.6, minLon: 107.4, maxLon: 109.5, highland: true },
   { name: 'Sơn La',     minLat: 20.5, maxLat: 21.8, minLon: 103.2, maxLon: 105.0, highland: true },
@@ -226,7 +240,8 @@ const PROVINCE_BBOXES: Array<{
   { name: 'Lai Châu',   minLat: 21.7, maxLat: 22.9, minLon: 102.1, maxLon: 103.6, highland: true },
   { name: 'Lào Cai',    minLat: 21.4, maxLat: 22.9, minLon: 103.3, maxLon: 105.0, highland: true },
   // Vùng thấp / đồng bằng / ven biển
-  { name: 'Khánh Hoà',  minLat: 11.2, maxLat: 13.1, minLon: 108.4, maxLon: 109.5 },
+  { name: 'Khánh Hoà',  minLat: 11.2, maxLat: 13.1, minLon: 108.4, maxLon: 109.5,
+    localZone: { meridian: 108.25, k0: 0.9999 } },
   { name: 'Đà Nẵng',    minLat: 14.8, maxLat: 16.2, minLon: 107.3, maxLon: 108.9 },
   { name: 'Đồng Nai',   minLat: 10.5, maxLat: 12.4, minLon: 106.3, maxLon: 107.8 },
   { name: 'Tây Ninh',   minLat: 10.3, maxLat: 11.9, minLon: 105.5, maxLon: 106.8 },

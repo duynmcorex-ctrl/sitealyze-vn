@@ -61,6 +61,7 @@ export function GeneralInfoSection() {
   const terrain           = useSiteStore(s => s.terrain);
   const geo               = useSiteStore(s => s.geo);
   const setGeoOverride    = useSiteStore(s => s.setGeoOverride);
+  const setGeoExact       = useSiteStore(s => s.setGeoExact);
 
   const active = projects.find(p => p.id === activeProjectId);
   const [newTag, setNewTag] = useState('');
@@ -78,7 +79,9 @@ export function GeneralInfoSection() {
       }
       const found = findProvince(loc.lat, loc.lon);
       if (found) {
-        setGeoOverride(found.province);
+        // Dùng TOẠ ĐỘ THẬT từ KML (loc.lat/loc.lon), KHÔNG dùng setGeoOverride(found.province)
+        // vì hàm đó suy ra lat/lon từ TÂM BBOX TỈNH — sai vị trí thật trên bản đồ vệ tinh.
+        setGeoExact({ ...found, lat: loc.lat, lon: loc.lon });
         setKmzMsg(`✓ ${found.province} (${loc.lat.toFixed(3)}°N, ${loc.lon.toFixed(3)}°E)`);
       } else {
         setKmzMsg(`✓ ${loc.lat.toFixed(3)}°N, ${loc.lon.toFixed(3)}°E (chưa nhận diện tỉnh)`);

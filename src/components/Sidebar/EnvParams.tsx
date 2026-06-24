@@ -32,6 +32,7 @@ export function EnvParams() {
   const showRoads            = useSiteStore((s) => s.showRoads);
   const toggleRoads          = useSiteStore((s) => s.toggleRoads);
   const setGeoOverride       = useSiteStore((s) => s.setGeoOverride);
+  const setGeoExact          = useSiteStore((s) => s.setGeoExact);
   const overlayLayers        = useSiteStore((s) => s.overlayLayers);
   const hasRoads             = overlayLayers.some(l => l.isRoad);
   const hasTrees             = overlayLayers.some(l => l.isTree && (l.treePoints?.length ?? 0) > 0);
@@ -54,7 +55,8 @@ export function EnvParams() {
       // lat/lon → province
       const foundGeo = findProvince(loc.lat, loc.lon);
       if (foundGeo) {
-        setGeoOverride(foundGeo.province);
+        // Dùng toạ độ THẬT từ KML, không suy ra từ tâm bbox tỉnh (setGeoOverride) — tránh sai vị trí
+        setGeoExact({ ...foundGeo, lat: loc.lat, lon: loc.lon });
         setKmzMsg(`✓ Phát hiện: ${foundGeo.province} (${loc.lat.toFixed(3)}°N, ${loc.lon.toFixed(3)}°E)`);
       } else {
         // Không có tỉnh → ít nhất gán vĩ độ
