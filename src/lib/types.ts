@@ -142,6 +142,15 @@ export interface TerrainData {
   rawRoadPolylines?: RawRoadPolyline[];
   /** Candidate ranh giới — UI dropdown để user chọn manual */
   boundaryCandidates?: BoundaryCandidate[];
+  /**
+   * Kinh tuyến trục VN2000 đã dùng để dựng terrain này từ ranh giới GGE/KML
+   * (xem buildTerrainFromBoundary + pickMeridianForLatLon trong vn2000.ts).
+   * Chỉ set khi terrain dựng từ KML — terrain dựng trực tiếp từ DXF không cần
+   * field này vì overlay sau đó luôn cùng nguồn toạ độ với chính nó.
+   * Dùng để reproject overlay DXF khảo sát thật (có thể dùng zone khác) về
+   * đúng cùng hệ chiếu với terrain trước khi vẽ đè lên — tránh lệch vị trí.
+   */
+  vn2000ProjOpts?: { centralMeridian: number; k0: number };
 }
 
 // ── Road classification ──────────────────────────────────────────────────────

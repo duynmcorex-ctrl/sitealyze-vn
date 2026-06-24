@@ -281,6 +281,10 @@ export async function buildTerrainFromBoundary(
       minZ, maxZ,
     },
     boundaryCandidates: [boundaryCandidate],
+    // Lưu zone chiếu đã dùng — để overlay DXF khảo sát thật sau này tự reproject
+    // về cùng hệ chiếu, tránh lệch vị trí nếu DXF dùng zone VN2000 khác (xem
+    // reprojectGroupToTerrainZone trong parseOverlayDxf.ts).
+    vn2000ProjOpts: { centralMeridian: projOpts.centralMeridian!, k0: projOpts.k0! },
   };
 
   return terrain;

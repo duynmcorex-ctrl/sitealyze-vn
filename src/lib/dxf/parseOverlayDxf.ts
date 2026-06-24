@@ -1,4 +1,5 @@
 import DxfParser from 'dxf-parser';
+import { detectVN2000Zone, vn2000ToLatLon, latLonToVN2000, type VN2000Options } from '../coord/vn2000';
 
 // ── ACI (AutoCAD Color Index) palette ─────────────────────────────────────────
 const ACI: Record<number, string> = {
@@ -582,6 +583,56 @@ export function circlesToTreePoints(
     });
   }
   return out;
+}
+
+/**
+ * Nếu terrain hiện tại dựng từ ranh giới GGE/KML (có vn2000ProjOpts lưu sẵn zone đã chọn theo
+ * centroid khu đất — xem buildTerrainFromBoundary), file DXF khảo sát thật add đè lên SAU ĐÓ có
+ * thể dùng một zone VN2000 khác (vd Lâm Đồng dùng kinh tuyến 107°45' chính thức, không phải zone
+ * "gần nhất theo khoảng cách"). 2 nguồn toạ độ khi đó lệch nhau dù cùng đại diện 1 vị trí thật.
+ *
+ * Hàm này: lấy 1 điểm đại diện trong group → đoán zone thật của nó bằng detectVN2000Zone() (có
+ * elevation hint) → nếu khác zone terrain, reproject TOÀN BỘ điểm trong group (qua lat/lon) sang
+ * đúng zone terrain trước khi gọi groupToWorldSpace — sửa lệch vị trí do khác zone chiếu.
+ *
+ * Không có tác dụng (trả về group gốc) nếu: group rỗng, không đoán được zone, hoặc zone đã khớp.
+ */
+export function reprojectGroupToTerrainZone(
+  group: OverlayGroup,
+  terrainProjOpts: VN2000Options,
+  elevationHint?: number,
+): OverlayGroup {
+  const sample = group.polylines[0]?.[0] ?? group.circles?.[0] ?? group.textPositions?.[0];
+  if (!sample) return group;
+
+  const detected = detectVN2000Zone(sample.x, sample.y, { elevationHint });
+  if (!detected) return group;
+
+  const terrainMeridian = terrainProjOpts.centralMeridian ?? 105;
+  const terrainK0 = terrainProjOpts.k0 ?? 0.9996;
+  const sameZone =
+    Math.abs(detected.centralMeridian - terrainMeridian) < 0.01 &&
+    Math.abs(detected.k0 - terrainK0) < 0.0001;
+  if (sameZone) return group;
+
+  const fromOpts: VN2000Options = { centralMeridian: detected.centralMeridian, k0: detected.k0 };
+  const reprojectPt = (p: { x: number; y: number }): { x: number; y: number } => {
+    const { lat, lon } = vn2000ToLatLon(p.x, p.y, fromOpts);
+    const { easting, northing } = latLonToVN2000(lat, lon, terrainProjOpts);
+    return { x: easting, y: northing };
+  };
+
+  console.log(
+    `[VN2000 overlay] DXF "${group.layerName}" dùng zone khác terrain (đoán: ${detected.label}, ` +
+    `terrain: ${terrainMeridian}°) — tự reproject để khớp vị trí.`,
+  );
+
+  return {
+    ...group,
+    polylines: group.polylines.map((pts) => pts.map(reprojectPt)),
+    circles: group.circles?.map((c) => ({ ...reprojectPt(c), r: c.r })),
+    textPositions: group.textPositions?.map((t) => ({ ...reprojectPt(t), content: t.content })),
+  };
 }
 
 /**

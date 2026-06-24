@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route, Trees, ChevronDown, ChevronRight, Folder } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
-import { parseOverlayDxfGroups, groupToWorldSpace, isTreeLayer, circlesToTreePoints } from '../../lib/dxf/parseOverlayDxf';
+import { parseOverlayDxfGroups, groupToWorldSpace, isTreeLayer, circlesToTreePoints, reprojectGroupToTerrainZone } from '../../lib/dxf/parseOverlayDxf';
 import { saveProject, loadProject } from '../../lib/project/saveLoad';
 import { isRoadLayer } from '../../lib/analysis/roads';
 import { SURFACE_LABEL, SURFACE_COLOR } from '../../lib/analysis/roadClassify';
@@ -40,7 +40,16 @@ export function LayerPanel() {
     const baseName = file.name.replace(/\.[^.]+$/, '');
     const timestamp = Date.now();
 
-    for (const group of groups) {
+    // Terrain dựng từ KML/GGE lưu sẵn zone chiếu đã chọn — nếu có, tự đoán + sửa lệch
+    // toạ độ cho trường hợp DXF khảo sát thật dùng zone VN2000 khác (vd zone địa phương).
+    const elevationHint = terrain.bounds.minZ != null && terrain.bounds.maxZ != null
+      ? (terrain.bounds.minZ + terrain.bounds.maxZ) / 2
+      : undefined;
+
+    for (let group of groups) {
+      if (terrain.vn2000ProjOpts) {
+        group = reprojectGroupToTerrainZone(group, terrain.vn2000ProjOpts, elevationHint);
+      }
       const worldPolylines = groupToWorldSpace(group, terrain.bounds, terrain.heightmap);
 
       // Detect tree + convert circles
