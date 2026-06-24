@@ -110,6 +110,14 @@ export interface OverlayLayer {
    *  bị driver WebGL bỏ qua trên hầu hết platform (luôn 1px) nên dùng drei <Line> để
    *  field này có tác dụng thật — xem OverlayLayerRenderer.tsx. */
   lineWidth?: number;
+  /**
+   * Dịch ngang layer (mét, Three.js world space XZ) — dùng khi overlay (vd ranh giới DXF
+   * khảo sát thật) bị lệch khỏi terrain dựng từ KML/GGE do KML vẽ tay không khớp tuyệt đối
+   * với vị trí thật. User tự kéo chỉnh bằng mắt cho khớp đặc điểm địa hình, không tự động.
+   */
+  offsetX?: number;
+  /** Dịch theo Z (mét, Three.js world space) — xem offsetX. */
+  offsetZ?: number;
   visible: boolean;
   /** Tự động tag là layer giao thông (regex GIAOTHONG, GT, DUONG …) */
   isRoad?: boolean;

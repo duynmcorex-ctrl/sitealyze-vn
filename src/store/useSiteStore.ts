@@ -189,6 +189,10 @@ interface State {
   toggleOverlayLayerVisible: (id: string) => void;
   updateOverlayLayerColor: (id: string, color: string) => void;
   updateOverlayLayerWidth: (id: string, width: number) => void;
+  /** Dịch layer theo X/Z (mét) — dùng để tự chỉnh overlay DXF khớp terrain bằng mắt khi
+   *  KML vẽ tay không khớp tuyệt đối vị trí thật. delta=true → cộng dồn (nudge từng nấc),
+   *  delta=false → set tuyệt đối (reset hoặc nhập số trực tiếp). */
+  updateOverlayLayerOffset: (id: string, dx: number, dz: number, delta?: boolean) => void;
   renameOverlayLayer: (id: string, name: string) => void;
   setOverlayLayers: (layers: OverlayLayer[]) => void;
   /** Thủ công đánh dấu/bỏ đánh dấu layer là tree — sinh treePoints từ polylines/circles */
@@ -768,6 +772,18 @@ export const useSiteStore = create<State>((set, get) => ({
   updateOverlayLayerWidth: (id, width) =>
     set((s) => ({
       overlayLayers: s.overlayLayers.map((l) => (l.id === id ? { ...l, lineWidth: Math.max(0.5, width) } : l)),
+    })),
+  updateOverlayLayerOffset: (id, dx, dz, delta = true) =>
+    set((s) => ({
+      overlayLayers: s.overlayLayers.map((l) =>
+        l.id === id
+          ? {
+              ...l,
+              offsetX: delta ? (l.offsetX ?? 0) + dx : dx,
+              offsetZ: delta ? (l.offsetZ ?? 0) + dz : dz,
+            }
+          : l,
+      ),
     })),
   renameOverlayLayer: (id, name) =>
     set((s) => ({

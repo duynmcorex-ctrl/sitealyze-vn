@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route, Trees, ChevronDown, ChevronRight, Folder } from 'lucide-react';
+import { Eye, EyeOff, Trash2, Upload, Save, FolderOpen, RotateCcw, Route, Trees, ChevronDown, ChevronRight, Folder, Move, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useSiteStore } from '../../store/useSiteStore';
 import { parseOverlayDxfGroups, groupToWorldSpace, isTreeLayer, circlesToTreePoints, reprojectGroupToTerrainZone } from '../../lib/dxf/parseOverlayDxf';
@@ -15,6 +15,7 @@ export function LayerPanel() {
   const toggleOverlayLayerVisible = useSiteStore((s) => s.toggleOverlayLayerVisible);
   const updateOverlayLayerColor = useSiteStore((s) => s.updateOverlayLayerColor);
   const updateOverlayLayerWidth = useSiteStore((s) => s.updateOverlayLayerWidth);
+  const updateOverlayLayerOffset = useSiteStore((s) => s.updateOverlayLayerOffset);
   const renameOverlayLayer = useSiteStore((s) => s.renameOverlayLayer);
   const setTerrain = useSiteStore((s) => s.setTerrain);
   const setOverlayLayers = useSiteStore((s) => s.setOverlayLayers);
@@ -152,6 +153,8 @@ export function LayerPanel() {
               onColorLayer={(id, c) => updateOverlayLayerColor(id, c)}
               onWidthLayer={(id, w) => updateOverlayLayerWidth(id, w)}
               onRenameLayer={(id, n) => renameOverlayLayer(id, n)}
+              onOffsetLayer={(id, dx, dz) => updateOverlayLayerOffset(id, dx, dz, true)}
+              onResetOffsetLayer={(id) => updateOverlayLayerOffset(id, 0, 0, false)}
             />
           ))}
         </div>
@@ -209,6 +212,7 @@ function FileGroup({
   fileId, layers,
   onToggleFile, onDeleteFile, onColorFile,
   onToggleLayer, onDeleteLayer, onColorLayer, onWidthLayer, onRenameLayer,
+  onOffsetLayer, onResetOffsetLayer,
 }: {
   fileId: string;
   layers: OverlayLayer[];
@@ -220,6 +224,8 @@ function FileGroup({
   onColorLayer: (id: string, c: string) => void;
   onWidthLayer: (id: string, w: number) => void;
   onRenameLayer: (id: string, n: string) => void;
+  onOffsetLayer: (id: string, dx: number, dz: number) => void;
+  onResetOffsetLayer: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const isMultiLayer = layers.length > 1;
@@ -240,6 +246,8 @@ function FileGroup({
         onColorChange={(c) => onColorLayer(layers[0].id, c)}
         onWidthChange={(w) => onWidthLayer(layers[0].id, w)}
         onRename={(n) => onRenameLayer(layers[0].id, n)}
+        onOffsetChange={(dx, dz) => onOffsetLayer(layers[0].id, dx, dz)}
+        onResetOffset={() => onResetOffsetLayer(layers[0].id)}
       />
     );
   }
@@ -313,6 +321,8 @@ function FileGroup({
               onColorChange={(c) => onColorLayer(layer.id, c)}
               onWidthChange={(w) => onWidthLayer(layer.id, w)}
               onRename={(n) => onRenameLayer(layer.id, n)}
+              onOffsetChange={(dx, dz) => onOffsetLayer(layer.id, dx, dz)}
+              onResetOffset={() => onResetOffsetLayer(layer.id)}
             />
           ))}
         </div>
@@ -324,7 +334,7 @@ function FileGroup({
 // ── Layer row ────────────────────────────────────────────────────────────────
 
 function LayerRow({
-  layer, onToggle, onDelete, onColorChange, onWidthChange, onRename,
+  layer, onToggle, onDelete, onColorChange, onWidthChange, onRename, onOffsetChange, onResetOffset,
 }: {
   layer: OverlayLayer;
   onToggle: () => void;
@@ -332,12 +342,20 @@ function LayerRow({
   onColorChange: (c: string) => void;
   onWidthChange: (w: number) => void;
   onRename: (n: string) => void;
+  onOffsetChange: (dx: number, dz: number) => void;
+  onResetOffset: () => void;
 }) {
   const isColorOverridden =
     layer.originalColor != null && layer.color !== layer.originalColor;
   const width = layer.lineWidth ?? 2;
+  const [showNudge, setShowNudge] = useState(false);
+  const [step, setStep] = useState(5);
+  const ox = layer.offsetX ?? 0;
+  const oz = layer.offsetZ ?? 0;
+  const hasOffset = ox !== 0 || oz !== 0;
 
   return (
+    <div>
     <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-bg-card border border-white/5">
       {/* Color swatch / picker */}
       <label className="cursor-pointer flex-shrink-0 relative" title="Đổi màu">
@@ -410,6 +428,17 @@ function LayerRow({
                    truncate placeholder:text-slate-600"
       />
 
+      {/* Tinh chỉnh vị trí (offset) — dùng khi overlay lệch terrain do KML vẽ tay */}
+      <button
+        onClick={() => setShowNudge((v) => !v)}
+        title="Tinh chỉnh vị trí layer (kéo khớp với terrain)"
+        className={`transition flex-shrink-0 ${
+          hasOffset ? 'text-accent-teal' : 'text-slate-500 hover:text-slate-300'
+        } ${showNudge ? 'opacity-100' : ''}`}
+      >
+        <Move size={13} />
+      </button>
+
       {/* Toggle visibility */}
       <button onClick={onToggle} className="text-slate-500 hover:text-slate-300 transition flex-shrink-0">
         {layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}
@@ -419,6 +448,72 @@ function LayerRow({
       <button onClick={onDelete} className="text-slate-600 hover:text-red-400 transition flex-shrink-0">
         <Trash2 size={13} />
       </button>
+    </div>
+
+    {/* Nudge pad — dịch layer theo XZ để khớp terrain bằng mắt */}
+    {showNudge && (
+      <div className="mt-1 mb-1.5 px-2 py-2 rounded bg-bg-card border border-accent-teal/30 flex items-center gap-3">
+        <div className="grid grid-cols-3 gap-0.5 flex-shrink-0" style={{ width: 84 }}>
+          <span />
+          <button
+            onClick={() => onOffsetChange(0, -step)}
+            title="Dịch Bắc"
+            className="flex items-center justify-center py-1 rounded bg-white/5 hover:bg-white/15 text-slate-300"
+          >
+            <ArrowUp size={13} />
+          </button>
+          <span />
+          <button
+            onClick={() => onOffsetChange(-step, 0)}
+            title="Dịch Tây"
+            className="flex items-center justify-center py-1 rounded bg-white/5 hover:bg-white/15 text-slate-300"
+          >
+            <ArrowLeft size={13} />
+          </button>
+          <button
+            onClick={onResetOffset}
+            title="Reset về vị trí gốc"
+            className="flex items-center justify-center py-1 rounded bg-white/5 hover:bg-red-500/20 text-slate-500 hover:text-red-400"
+          >
+            <RotateCcw size={11} />
+          </button>
+          <button
+            onClick={() => onOffsetChange(step, 0)}
+            title="Dịch Đông"
+            className="flex items-center justify-center py-1 rounded bg-white/5 hover:bg-white/15 text-slate-300"
+          >
+            <ArrowRight size={13} />
+          </button>
+          <span />
+          <button
+            onClick={() => onOffsetChange(0, step)}
+            title="Dịch Nam"
+            className="flex items-center justify-center py-1 rounded bg-white/5 hover:bg-white/15 text-slate-300"
+          >
+            <ArrowDown size={13} />
+          </button>
+          <span />
+        </div>
+        <div className="flex flex-col gap-1 text-[10px] text-slate-400">
+          <label className="flex items-center gap-1.5">
+            Bước:
+            <select
+              value={step}
+              onChange={(e) => setStep(Number(e.target.value))}
+              className="bg-bg-card border border-white/10 rounded px-1 py-0.5 text-slate-200"
+            >
+              <option value={1}>1m</option>
+              <option value={5}>5m</option>
+              <option value={20}>20m</option>
+              <option value={50}>50m</option>
+            </select>
+          </label>
+          <span>
+            Lệch hiện tại: <span className="text-slate-200 font-mono">{ox.toFixed(0)}, {oz.toFixed(0)}</span> m
+          </span>
+        </div>
+      </div>
+    )}
     </div>
   );
 }

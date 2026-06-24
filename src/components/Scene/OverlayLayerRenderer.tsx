@@ -21,8 +21,10 @@ export function OverlayLayerRenderer() {
  */
 function OverlayLines({ layer }: { layer: OverlayLayer }) {
   const width = layer.lineWidth ?? 2;
+  const ox = layer.offsetX ?? 0;
+  const oz = layer.offsetZ ?? 0;
   return (
-    <>
+    <group position={[ox, 0, oz]}>
       {layer.polylines.map((poly, i) => {
         if (poly.length < 2) return null;
         const points = poly.map((p) => [p.x, p.y, p.z] as [number, number, number]);
@@ -35,6 +37,6 @@ function OverlayLines({ layer }: { layer: OverlayLayer }) {
           />
         );
       })}
-    </>
+    </group>
   );
 }
