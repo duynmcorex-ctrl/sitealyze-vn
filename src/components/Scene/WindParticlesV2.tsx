@@ -18,15 +18,18 @@
  *   - Velocity streak = "fade trail" approximation (Section 9.5)
  */
 
-import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useMemo, useRef, useEffect } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+// Thick lines (không bị giới hạn 1px của LineBasicMaterial trên WebGL) — cùng kỹ thuật FlowArrows.tsx
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { useSiteStore } from '../../store/useSiteStore';
 import { sampleHeight } from '../../lib/analysis/wind';
 import type { Heightmap } from '../../lib/types';
 
-// ── Windy color palette (speed in kt → [R,G,B] 0-255) ─────────────────────────
-const WINDY_STOPS: [number, [number, number, number]][] = [
+export const WINDY_STOPS: [number, [number, number, number]][] = [
   [0,   [98,  113, 183]],
   [1,   [57,   97, 159]],
   [3,   [74,  148, 169]],
@@ -48,7 +51,7 @@ const WINDY_STOPS: [number, [number, number, number]][] = [
 ];
 
 /** Chuyển tốc độ m/s → màu [r,g,b] trong [0..1] theo Windy palette */
-function windyRGB(speedMs: number): [number, number, number] {
+export function windyRGB(speedMs: number): [number, number, number] {
   const kt = speedMs * 1.94384;
   for (let i = 1; i < WINDY_STOPS.length; i++) {
     if (kt <= WINDY_STOPS[i][0]) {
@@ -102,9 +105,10 @@ function terrainMult(
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const N = 4000;       // số hạt
-const TRAIL_T = 0.55; // thời gian "đuôi" (giây) — streak dài ở gió nhanh, ngắn ở gió chậm
+const N = 3000;       // số hạt (giảm nhẹ từ 4000 — bù cho LineSegments2 update mỗi frame)
+const TRAIL_T = 0.85; // thời gian "đuôi" (giây) — streak dài hơn để thấy rõ chiều gió
 const H_OFF = 4;      // cao độ trên bề mặt địa hình (m)
+const LINE_WIDTH_PX = 3.5; // độ rộng streak (px) — LineMaterial, không bị giới hạn 1px WebGL
 
 // ── Simulation state shape ────────────────────────────────────────────────────
 interface Sim {
@@ -119,13 +123,17 @@ export function WindParticlesV2() {
   const terrain = useSiteStore((s) => s.terrain);
   const env     = useSiteStore((s) => s.env);
 
-  const lineRef = useRef<THREE.LineSegments>(null);
-  const dotRef  = useRef<THREE.Points>(null);
-  const simRef  = useRef<Sim | null>(null);
+  const dotRef    = useRef<THREE.Points>(null);
+  const simRef    = useRef<Sim | null>(null);
+  const groupRef  = useRef<THREE.Group>(null);
+  const lineObjRef = useRef<LineSegments2 | null>(null);
+  const lineGeoRef = useRef<LineSegmentsGeometry | null>(null);
+  const lineBufRef = useRef<{ pos: Float32Array; col: Float32Array } | null>(null);
+  const { size } = useThree(); // viewport px — cần cho LineMaterial.resolution
 
-  // ── Tạo geometry 1 lần khi terrain load ────────────────────────────────────
-  const { lineGeo, dotGeo } = useMemo(() => {
-    if (!terrain) return { lineGeo: null, dotGeo: null };
+  // ── Tạo state mô phỏng + buffer streak 1 lần khi terrain load ──────────────
+  const dotGeo = useMemo(() => {
+    if (!terrain) return null;
 
     const hm = terrain.heightmap;
     const W = hm.width * hm.cellSize;
@@ -146,12 +154,11 @@ export function WindParticlesV2() {
     }
     simRef.current = { px, py, pz, age, maxAge, W, H, hm };
 
-    // LineSegments: N đoạn, mỗi đoạn 2 đỉnh [tail, head]
-    const linePos = new Float32Array(N * 2 * 3);
-    const lineCol = new Float32Array(N * 2 * 3); // premultiplied alpha via brightness
-    const lineGeo = new THREE.BufferGeometry();
-    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
-    lineGeo.setAttribute('color',    new THREE.BufferAttribute(lineCol, 3));
+    // Buffer streak [tail, head] mỗi hạt — feed vào LineSegments2 mỗi frame
+    lineBufRef.current = {
+      pos: new Float32Array(N * 2 * 3),
+      col: new Float32Array(N * 2 * 3),
+    };
 
     // Points: N đỉnh đầu hạt (sáng hơn streak)
     const dotPos = new Float32Array(N * 3);
@@ -160,12 +167,47 @@ export function WindParticlesV2() {
     dotGeo.setAttribute('position', new THREE.BufferAttribute(dotPos, 3));
     dotGeo.setAttribute('color',    new THREE.BufferAttribute(dotCol, 3));
 
-    return { lineGeo, dotGeo };
+    return dotGeo;
   }, [terrain]);
+
+  // ── Tạo LineSegments2 (thick line) 1 lần khi terrain load — dispose khi unmount ──
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group || !terrain) return;
+
+    const geo = new LineSegmentsGeometry();
+    const mat = new LineMaterial({
+      linewidth: LINE_WIDTH_PX,
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      resolution: new THREE.Vector2(size.width, size.height),
+    });
+    const lineObj = new LineSegments2(geo, mat);
+    group.add(lineObj);
+    lineGeoRef.current = geo;
+    lineObjRef.current = lineObj;
+
+    return () => {
+      group.remove(lineObj);
+      geo.dispose();
+      mat.dispose();
+      lineGeoRef.current = null;
+      lineObjRef.current = null;
+    };
+  }, [terrain]);
+
+  // Cập nhật resolution khi resize viewport (LineMaterial cần biết px để tính độ rộng đúng)
+  useEffect(() => {
+    if (lineObjRef.current) {
+      (lineObjRef.current.material as LineMaterial).resolution.set(size.width, size.height);
+    }
+  }, [size.width, size.height]);
 
   // ── Cập nhật mỗi frame ──────────────────────────────────────────────────────
   useFrame((_, dt) => {
-    if (!terrain || !simRef.current || !lineGeo || !dotGeo) return;
+    if (!terrain || !simRef.current || !dotGeo || !lineBufRef.current) return;
 
     const sim = simRef.current;
     const { px, py, pz, age, maxAge, W, H, hm } = sim;
@@ -176,8 +218,8 @@ export function WindParticlesV2() {
     const windDz = -Math.cos(rad);
     const baseSpeedMs = Math.max(0.2, env.windSpeed);
 
-    const linePos = (lineGeo.attributes.position as THREE.BufferAttribute).array as Float32Array;
-    const lineCol = (lineGeo.attributes.color    as THREE.BufferAttribute).array as Float32Array;
+    const linePos = lineBufRef.current.pos;
+    const lineCol = lineBufRef.current.col;
     const dotPos  = (dotGeo.attributes.position  as THREE.BufferAttribute).array as Float32Array;
     const dotCol  = (dotGeo.attributes.color     as THREE.BufferAttribute).array as Float32Array;
 
@@ -243,31 +285,26 @@ export function WindParticlesV2() {
       dotCol[di + 2] = b * alpha;
     }
 
-    (lineGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    (lineGeo.attributes.color    as THREE.BufferAttribute).needsUpdate = true;
-    (dotGeo.attributes.position  as THREE.BufferAttribute).needsUpdate = true;
-    (dotGeo.attributes.color     as THREE.BufferAttribute).needsUpdate = true;
+    // Feed buffer mới vào LineSegmentsGeometry (instanced attrs cho LineSegments2)
+    if (lineGeoRef.current) {
+      lineGeoRef.current.setPositions(linePos);
+      lineGeoRef.current.setColors(lineCol);
+    }
+    (dotGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (dotGeo.attributes.color    as THREE.BufferAttribute).needsUpdate = true;
   });
 
-  if (!lineGeo || !dotGeo) return null;
+  if (!dotGeo) return null;
 
   return (
-    <group name="wind-v2">
-      {/* Velocity streaks */}
-      <lineSegments ref={lineRef} geometry={lineGeo}>
-        <lineBasicMaterial
-          vertexColors
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          transparent
-        />
-      </lineSegments>
+    <group name="wind-v2" ref={groupRef}>
+      {/* Velocity streaks (LineSegments2 — thêm vào group bằng useEffect ở trên) */}
 
-      {/* Leading-edge dots — sáng hơn streak */}
+      {/* Leading-edge dots — sáng hơn streak, to hơn để rõ chiều gió */}
       <points ref={dotRef} geometry={dotGeo}>
         <pointsMaterial
           vertexColors
-          size={1.6}
+          size={2.6}
           sizeAttenuation
           blending={THREE.AdditiveBlending}
           depthWrite={false}

@@ -5,6 +5,44 @@ import { SUITABILITY_CLASSES } from '../../lib/analysis/suitability';
 import { ELEV_PALETTE_HEX, ELEV_PALETTE_SMALL_HEX, SMALL_RANGE_THRESHOLD_M } from '../../lib/analysis/elevationPalette';
 import { RoadsLegend } from '../Scene/RoadsRender';
 import { LANDUSE_DISPLAY_COLOR, LANDUSE_LABEL } from '../../lib/dxf/parseLanduse';
+import { WINDY_STOPS } from '../Scene/WindParticlesV2';
+import { WindRose } from '../Sidebar/WindRose';
+
+/** Legend mode='wind' — compass hướng (tái dùng WindRose) + thang màu tốc độ kiểu Windy.com */
+function WindLegend() {
+  const env = useSiteStore((s) => s.env);
+  const maxKt = WINDY_STOPS[WINDY_STOPS.length - 1][0];
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-center">
+        <WindRose dirDeg={env.windDirection} speedMs={env.windSpeed} size={110} />
+      </div>
+      <div className="text-center text-[11px] text-slate-300 font-mono">
+        {env.windDirection}° · {env.windSpeed.toFixed(1)} m/s
+      </div>
+      <div>
+        <div className="text-[9px] uppercase tracking-wider text-slate-500 mb-1">Tốc độ (màu streak)</div>
+        <div
+          className="h-2.5 rounded-sm w-full"
+          style={{
+            background: `linear-gradient(to right, ${WINDY_STOPS.map(
+              ([kt, [r, g, b]]) => `rgb(${r},${g},${b}) ${(kt / maxKt) * 100}%`,
+            ).join(', ')})`,
+          }}
+        />
+        <div className="flex justify-between text-[9px] text-slate-500 font-mono mt-0.5">
+          <span>0 kt</span>
+          <span>~{Math.round(maxKt / 2)} kt</span>
+          <span>{maxKt} kt</span>
+        </div>
+      </div>
+      <div className="text-[9.5px] text-slate-500 leading-snug">
+        Streak: đuôi mờ → đầu sáng = chiều gió. Địa hình ảnh hưởng tốc độ cục bộ
+        (xuôi dốc nhanh hơn, ngược dốc chậm hơn).
+      </div>
+    </div>
+  );
+}
 
 /** Gradient bar + step labels cho rainbow/topographic mode — giống topographic-map.com */
 function RainbowElevationBar({ min, max }: { min: number; max: number }) {
@@ -172,7 +210,7 @@ export function Legend() {
       break;
     case 'wind':
       title = 'Mô phỏng gió';
-      content = <div className="text-xs text-slate-400">Dùng tham số hướng + tốc độ gió.</div>;
+      content = <WindLegend />;
       break;
     case 'viewshed':
       title = 'Phân tích tầm nhìn';
